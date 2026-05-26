@@ -81,5 +81,9 @@ func coversHandler(cfg *config.Config) http.Handler {
 	})
 }
 
-// AppVersion is the application version string.
-const AppVersion = "0.1.0"
+// AppVersion is overridden at build time via:
+//
+//	wails build -ldflags "-X main.AppVersion=v0.2.0"
+//
+// Local dev builds keep "dev" so the auto-updater skips the version check.
+var AppVersion = "dev"

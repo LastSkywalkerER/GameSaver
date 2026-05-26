@@ -42,6 +42,9 @@ export namespace config {
 	    watcherDebounceMs: number;
 	    retentionKeepN: number;
 	    autostartTray: boolean;
+	    autoCheckUpdates: boolean;
+	    skippedUpdateVersion?: string;
+	    lastUpdateCheckUnix?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -59,6 +62,9 @@ export namespace config {
 	        this.watcherDebounceMs = source["watcherDebounceMs"];
 	        this.retentionKeepN = source["retentionKeepN"];
 	        this.autostartTray = source["autostartTray"];
+	        this.autoCheckUpdates = source["autoCheckUpdates"];
+	        this.skippedUpdateVersion = source["skippedUpdateVersion"];
+	        this.lastUpdateCheckUnix = source["lastUpdateCheckUnix"];
 	    }
 	}
 
@@ -322,6 +328,39 @@ export namespace pipeline {
 	        this.installationsTotal = source["installationsTotal"];
 	        this.perSource = source["perSource"];
 	        this.durationMs = source["durationMs"];
+	    }
+	}
+
+}
+
+export namespace updater {
+	
+	export class UpdateInfo {
+	    available: boolean;
+	    currentVersion: string;
+	    latestVersion: string;
+	    releaseUrl: string;
+	    releaseNotes?: string;
+	    assetUrl?: string;
+	    assetSize?: number;
+	    sha256?: string;
+	    publishedAt?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.currentVersion = source["currentVersion"];
+	        this.latestVersion = source["latestVersion"];
+	        this.releaseUrl = source["releaseUrl"];
+	        this.releaseNotes = source["releaseNotes"];
+	        this.assetUrl = source["assetUrl"];
+	        this.assetSize = source["assetSize"];
+	        this.sha256 = source["sha256"];
+	        this.publishedAt = source["publishedAt"];
 	    }
 	}
 

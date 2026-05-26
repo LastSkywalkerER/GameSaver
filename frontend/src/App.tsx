@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { api, EventsOn, type GameView } from "./api";
+import { api, EventsOn, type GameView, type UpdateInfo } from "./api";
 import { Sidebar, type Page } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { Toaster } from "./components/Toaster";
 import { GameDrawer } from "./components/GameDrawer";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { BackupsPage } from "./pages/BackupsPage";
@@ -20,6 +21,7 @@ export default function App() {
   const [filter, setFilter] = useState("all");
   const [opened, setOpened] = useState<GameView | null>(null);
   const [phase, setPhase] = useState<string>("");
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
 
   async function refresh() {
     try {
@@ -55,6 +57,9 @@ export default function App() {
         `Готово · ${r?.entriesMatched ?? 0} сейв-совпадений, ${r?.newGamesCreated ?? 0} новых игр, ${r?.newLocationsAdded ?? 0} новых сейвов`);
       refresh();
     });
+    const offUpdate = EventsOn("update:available", (info: any) => {
+      setUpdate(info as UpdateInfo);
+    });
     const offReconcile = EventsOn("reconcile:done", (r: any) => {
       const created = (r?.createdGames ?? 0) + (r?.createdLocations ?? 0);
       const msg = `Бэкапы синхронизированы: импорт ${r?.importedSnapshots ?? 0}` +
@@ -64,7 +69,7 @@ export default function App() {
       refresh();
     });
     return () => {
-      try { (offProg as any)?.(); (offSrc as any)?.(); (offGame as any)?.(); (offMatch as any)?.(); (offMeta as any)?.(); (offDone as any)?.(); (offRevProg as any)?.(); (offRevDone as any)?.(); (offReconcile as any)?.(); } catch {}
+      try { (offProg as any)?.(); (offSrc as any)?.(); (offGame as any)?.(); (offMatch as any)?.(); (offMeta as any)?.(); (offDone as any)?.(); (offRevProg as any)?.(); (offRevDone as any)?.(); (offReconcile as any)?.(); (offUpdate as any)?.(); } catch {}
     };
   }, []);
 
@@ -102,6 +107,9 @@ export default function App() {
     <div className="flex h-screen w-screen text-gray-100">
       <Sidebar page={page} onNavigate={setPage} />
       <main className="flex flex-1 flex-col overflow-hidden">
+        {update && update.available && (
+          <UpdateBanner info={update} onDismiss={() => setUpdate(null)} />
+        )}
         {(page === "dashboard" || page === "library") && (
           <TopBar
             scanning={scanning}

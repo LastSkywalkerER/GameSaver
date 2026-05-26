@@ -51,6 +51,23 @@ export function SettingsPage() {
     }
   }
 
+  async function checkForUpdate() {
+    try {
+      const info: any = await api.CheckForUpdate();
+      if (info?.available) {
+        api.Toast("success", `Доступна ${info.latestVersion}. Баннер появится сверху.`);
+      } else {
+        api.Toast("info", `Это последняя версия (${info?.currentVersion ?? "?"}).`);
+      }
+    } catch (e) {
+      api.Toast("error", "Проверка обновления: " + String(e));
+    }
+  }
+  async function toggleAutoCheck(v: boolean) {
+    await api.SetAutoCheckUpdates(v);
+    if (cfg) setCfg({ ...cfg, autoCheckUpdates: v });
+  }
+
   if (!cfg) return <div className="p-6 text-muted">Loading…</div>;
 
   return (
@@ -106,6 +123,24 @@ export function SettingsPage() {
         <div className="text-xs uppercase tracking-wide text-muted">{t("settings.retention")}</div>
         <div className="mt-1 text-sm text-gray-200">{cfg.retentionKeepN}</div>
         <p className="mt-2 text-xs text-muted">Старые снэпшоты сверх лимита удаляются автоматически.</p>
+      </section>
+
+      <section className="card p-4">
+        <div className="text-xs uppercase tracking-wide text-muted">Обновления</div>
+        <label className="mt-2 flex items-center gap-2 text-sm text-gray-200">
+          <input
+            type="checkbox"
+            checked={cfg.autoCheckUpdates !== false}
+            onChange={(e) => toggleAutoCheck(e.target.checked)}
+          />
+          Автоматически проверять обновления при запуске
+        </label>
+        <div className="mt-3 flex items-center gap-2">
+          <button className="btn" onClick={checkForUpdate}>🔄 Проверить сейчас</button>
+          <span className="text-xs text-muted">
+            Тянет latest release из github.com/LastSkywalkerER/GameSaver
+          </span>
+        </div>
       </section>
     </div>
   );

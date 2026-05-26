@@ -19,6 +19,11 @@ type Config struct {
 	WatcherDebounceMs int      `json:"watcherDebounceMs"`
 	RetentionKeepN    int      `json:"retentionKeepN"`
 	AutostartTray     bool     `json:"autostartTray"`
+
+	// Auto-update preferences.
+	AutoCheckUpdates    bool   `json:"autoCheckUpdates"`
+	SkippedUpdateVer    string `json:"skippedUpdateVersion,omitempty"`
+	LastUpdateCheckUnix int64  `json:"lastUpdateCheckUnix,omitempty"`
 }
 
 const (
@@ -35,6 +40,7 @@ func defaultConfig() *Config {
 		WatcherDebounceMs: 10 * 60 * 1000,
 		RetentionKeepN:    20,
 		AutostartTray:     false,
+		AutoCheckUpdates:  true,
 	}
 }
 

@@ -104,6 +104,9 @@ export interface AppConfig {
   watcherDebounceMs: number;
   retentionKeepN: number;
   autostartTray: boolean;
+  autoCheckUpdates?: boolean;
+  skippedUpdateVersion?: string;
+  lastUpdateCheckUnix?: number;
 }
 
 export function coverUrl(name?: string): string | undefined {
@@ -161,4 +164,16 @@ export interface ReconcileResult {
   orphanZips: number;
   orphanManifests: number;
   deadSnapshots: number;
+}
+
+export interface UpdateInfo {
+  available: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  releaseUrl: string;
+  releaseNotes?: string;
+  assetUrl?: string;
+  assetSize?: number;
+  sha256?: string;
+  publishedAt?: string;
 }

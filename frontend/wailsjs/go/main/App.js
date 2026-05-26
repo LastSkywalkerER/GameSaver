@@ -10,12 +10,20 @@ export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
 
+export function ApplyUpdate() {
+  return window['go']['main']['App']['ApplyUpdate']();
+}
+
 export function BackupAll() {
   return window['go']['main']['App']['BackupAll']();
 }
 
 export function BackupGame(arg1) {
   return window['go']['main']['App']['BackupGame'](arg1);
+}
+
+export function CheckForUpdate() {
+  return window['go']['main']['App']['CheckForUpdate']();
 }
 
 export function ClearManifestOverride(arg1) {
@@ -70,6 +78,10 @@ export function RemoveSaveLocation(arg1) {
   return window['go']['main']['App']['RemoveSaveLocation'](arg1);
 }
 
+export function RestartApp() {
+  return window['go']['main']['App']['RestartApp']();
+}
+
 export function RestoreSnapshot(arg1, arg2) {
   return window['go']['main']['App']['RestoreSnapshot'](arg1, arg2);
 }
@@ -84,6 +96,10 @@ export function ScanLibrary() {
 
 export function SearchManifest(arg1, arg2) {
   return window['go']['main']['App']['SearchManifest'](arg1, arg2);
+}
+
+export function SetAutoCheckUpdates(arg1) {
+  return window['go']['main']['App']['SetAutoCheckUpdates'](arg1);
 }
 
 export function SetBackupRoot(arg1) {
@@ -108,6 +124,10 @@ export function ShowItemInFolder(arg1) {
 
 export function Shutdown(arg1) {
   return window['go']['main']['App']['Shutdown'](arg1);
+}
+
+export function SkipUpdate(arg1) {
+  return window['go']['main']['App']['SkipUpdate'](arg1);
 }
 
 export function Startup(arg1) {

@@ -1,0 +1,89 @@
+# Tag-triggered Windows release build for GameSaver.
+#
+# Usage:
+#   git tag v0.2.0
+#   git push --tags
+#
+# CI then builds a portable .zip + checksums.txt and attaches both to a new
+# GitHub Release (notes auto-generated from commits since the previous tag).
+#
+# The version string is baked into the binary via ldflags, so the self-updater
+# inside the app can compare it against future releases.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows .zip
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build (production, version-stamped)
+        shell: pwsh
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Write-Host "Building $tag"
+          wails build -trimpath -ldflags "-X main.AppVersion=$tag"
+          if (!(Test-Path build/bin/GameSaver.exe)) {
+            throw "GameSaver.exe was not produced"
+          }
+          $size = (Get-Item build/bin/GameSaver.exe).Length
+          Write-Host ("Built {0:N1} MB" -f ($size/1MB))
+
+      - name: Package portable .zip + checksums
+        id: package
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zipName = "GameSaver-$tag-windows-amd64.zip"
+          Compress-Archive -Path build/bin/GameSaver.exe -DestinationPath $zipName -Force
+          $zipSha = (Get-FileHash $zipName -Algorithm SHA256).Hash.ToLower()
+          $exeSha = (Get-FileHash build/bin/GameSaver.exe -Algorithm SHA256).Hash.ToLower()
+          @(
+            "$zipSha  $zipName",
+            "$exeSha  GameSaver.exe"
+          ) | Set-Content -Encoding ASCII -NoNewline -Path checksums.txt
+          "Built artefacts:" | Write-Host
+          Get-ChildItem GameSaver-*.zip, checksums.txt | Select-Object Name, Length
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: GameSaver ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            GameSaver-*-windows-amd64.zip
+            checksums.txt

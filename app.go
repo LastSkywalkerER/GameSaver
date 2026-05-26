@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -18,18 +21,20 @@ import (
 	"GameSaver/internal/meta"
 	"GameSaver/internal/scan/pipeline"
 	"GameSaver/internal/storage/sqlite"
+	"GameSaver/internal/updater"
 )
 
 // App is the Wails-bound facade. All exported methods become callable from the
 // React frontend via the generated bindings.
 type App struct {
-	cfg    *config.Config
-	ctx    context.Context
-	db     *sqlite.Store
-	meta   *meta.Service
-	bk     *backup.Engine
-	match  *match.Service
-	launch *launcher.Service
+	cfg     *config.Config
+	ctx     context.Context
+	db      *sqlite.Store
+	meta    *meta.Service
+	bk      *backup.Engine
+	match   *match.Service
+	launch  *launcher.Service
+	updater *updater.Updater
 
 	scanMu sync.Mutex
 }
@@ -50,6 +55,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.match = match.New(db)
 	a.bk = backup.New(a.cfg, db)
 	a.launch = launcher.New(db)
+	a.updater = updater.New(AppVersion)
 
 	// Sync DB with on-disk backups: re-import orphan snapshot zips into the
 	// snapshots table (and prune dead rows). Runs on every start; idempotent.
@@ -72,7 +78,38 @@ func (a *App) Startup(ctx context.Context) {
 			wailsruntime.EventsEmit(a.ctx, "reconcile:done", r)
 		}
 	}()
-	slog.Info("startup complete")
+
+	// Background update check (after a short delay so the UI is responsive).
+	if a.cfg.AutoCheckUpdates {
+		go a.backgroundUpdateCheck()
+	}
+
+	slog.Info("startup complete", "version", AppVersion)
+}
+
+// backgroundUpdateCheck waits a few seconds, queries GitHub, then emits
+// "update:available" if a newer version exists that the user hasn't skipped.
+func (a *App) backgroundUpdateCheck() {
+	time.Sleep(8 * time.Second)
+	if a.ctx == nil {
+		return
+	}
+	info, err := a.updater.Check(a.ctx)
+	if err != nil {
+		slog.Info("update check failed (non-fatal)", "err", err)
+		return
+	}
+	a.cfg.LastUpdateCheckUnix = time.Now().Unix()
+	_ = config.Save(a.cfg)
+	if !info.Available {
+		return
+	}
+	if a.cfg.SkippedUpdateVer != "" && a.cfg.SkippedUpdateVer == info.LatestVer {
+		slog.Info("update available but skipped by user", "version", info.LatestVer)
+		return
+	}
+	slog.Info("update available", "current", info.CurrentVer, "latest", info.LatestVer)
+	wailsruntime.EventsEmit(a.ctx, "update:available", info)
 }
 
 func (a *App) Shutdown(_ context.Context) {
@@ -292,6 +329,73 @@ func (a *App) LaunchGame(gameID string, installationID string) error {
 // ===== Misc =====
 
 func (a *App) AppVersion() string { return AppVersion }
+
+// ===== Updater =====
+
+func (a *App) CheckForUpdate() (*updater.UpdateInfo, error) {
+	info, err := a.updater.Check(a.ctx)
+	if err != nil {
+		return nil, err
+	}
+	a.cfg.LastUpdateCheckUnix = time.Now().Unix()
+	_ = config.Save(a.cfg)
+	return info, nil
+}
+
+// ApplyUpdate downloads the latest release zip, verifies its checksum,
+// replaces the running binary and returns. The caller (UI) is expected to
+// trigger a restart afterwards.
+func (a *App) ApplyUpdate() error {
+	info, err := a.updater.Check(a.ctx)
+	if err != nil {
+		return err
+	}
+	if !info.Available {
+		return fmt.Errorf("no update available")
+	}
+	if err := a.updater.Apply(a.ctx, info); err != nil {
+		return err
+	}
+	// Clear the skipped-version marker — user just accepted an upgrade.
+	a.cfg.SkippedUpdateVer = ""
+	_ = config.Save(a.cfg)
+	return nil
+}
+
+// SkipUpdate pins the user's decision to skip a specific released version.
+// The startup check won't surface that exact version again.
+func (a *App) SkipUpdate(version string) error {
+	a.cfg.SkippedUpdateVer = version
+	return config.Save(a.cfg)
+}
+
+// SetAutoCheckUpdates toggles whether the startup pass hits GitHub.
+func (a *App) SetAutoCheckUpdates(enabled bool) error {
+	a.cfg.AutoCheckUpdates = enabled
+	return config.Save(a.cfg)
+}
+
+// RestartApp re-launches the process with the same arguments and exits the
+// current one. Used after Apply() to switch into the freshly written exe.
+func (a *App) RestartApp() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	// Give the new process a moment to take the window, then bow out.
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		os.Exit(0)
+	}()
+	return nil
+}
 
 func (a *App) PickFolder(title string) (string, error) {
 	if a.ctx == nil {
