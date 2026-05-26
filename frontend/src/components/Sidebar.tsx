@@ -1,4 +1,6 @@
 import clsx from "clsx";
+import { useEffect, useState } from "react";
+import { api } from "../api";
 import { useT } from "../i18n";
 
 export type Page = "dashboard" | "library" | "backups" | "settings";
@@ -11,6 +13,10 @@ export function Sidebar({
   onNavigate: (p: Page) => void;
 }) {
   const t = useT();
+  const [version, setVersion] = useState<string>("");
+  useEffect(() => {
+    api.AppVersion().then((v: any) => setVersion(typeof v === "string" ? v : ""));
+  }, []);
   const items: { id: Page; label: string; icon: string }[] = [
     { id: "dashboard", label: t("nav.dashboard"), icon: "▦" },
     { id: "library",   label: t("nav.library"),   icon: "≡" },
@@ -40,7 +46,12 @@ export function Sidebar({
           </button>
         ))}
       </nav>
-      <div className="px-4 py-3 text-[11px] text-muted">v0.1.0</div>
+      <div
+        className="px-4 py-3 text-[11px] text-muted"
+        title="Версия пробивается в бинарь при сборке (ldflags). 'dev' = локальная сборка"
+      >
+        {version || "…"}
+      </div>
     </aside>
   );
 }

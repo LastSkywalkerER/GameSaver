@@ -20,11 +20,27 @@ import (
 	"GameSaver/internal/storage/sqlite"
 )
 
+// DefaultSteamGridDBKey is injected at build-time via
+//
+//	-ldflags "-X 'GameSaver/internal/meta.DefaultSteamGridDBKey=<key>'"
+//
+// (the release CI sets this from the STEAMGRIDDB_KEY GitHub Actions secret).
+// Empty in local dev builds. A user-supplied key in Settings always wins.
+var DefaultSteamGridDBKey = ""
+
 // Service downloads + caches covers/heroes/icons for games and stores their paths.
 type Service struct {
 	cfg    *config.Config
 	db     *sqlite.Store
 	client *http.Client
+}
+
+// activeKey returns the user override if set, otherwise the build-injected default.
+func (s *Service) activeKey() string {
+	if strings.TrimSpace(s.cfg.SteamGridDBKey) != "" {
+		return s.cfg.SteamGridDBKey
+	}
+	return DefaultSteamGridDBKey
 }
 
 func New(cfg *config.Config, db *sqlite.Store) *Service {
@@ -99,7 +115,7 @@ func (s *Service) fetch(ctx context.Context, g *domain.Game) (cover, hero, icon 
 	}
 
 	// Priority 2: SteamGridDB by AppID (if Steam) — gives nicer artwork variants.
-	if s.cfg.SteamGridDBKey != "" {
+	if s.activeKey() != "" {
 		if g.SteamAppID > 0 {
 			if cover == "" {
 				if u := s.sgdbFirstAsset(ctx, "grids/steam", g.SteamAppID, "?dimensions=600x900&types=static"); u != "" {
@@ -166,7 +182,7 @@ type sgdbSearchResult struct {
 func (s *Service) sgdbFirstAsset(ctx context.Context, kind string, id int64, query string) string {
 	endpoint := fmt.Sprintf("https://www.steamgriddb.com/api/v2/%s/%d%s", kind, id, query)
 	req, _ := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
-	req.Header.Set("Authorization", "Bearer "+s.cfg.SteamGridDBKey)
+	req.Header.Set("Authorization", "Bearer "+s.activeKey())
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return ""
@@ -186,7 +202,7 @@ func (s *Service) sgdbFirstAsset(ctx context.Context, kind string, id int64, que
 func (s *Service) sgdbSearch(ctx context.Context, name string) int64 {
 	endpoint := fmt.Sprintf("https://www.steamgriddb.com/api/v2/search/autocomplete/%s", url.PathEscape(name))
 	req, _ := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
-	req.Header.Set("Authorization", "Bearer "+s.cfg.SteamGridDBKey)
+	req.Header.Set("Authorization", "Bearer "+s.activeKey())
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return 0

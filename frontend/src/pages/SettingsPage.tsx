@@ -96,11 +96,29 @@ export function SettingsPage() {
       <section className="card p-4">
         <div className="text-xs uppercase tracking-wide text-muted">{t("settings.steamGridDbKey")}</div>
         <div className="mt-1 flex items-center gap-2">
-          <input className="input flex-1" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="api key (optional)" />
+          <input
+            className="input flex-1"
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="оставь пустым, чтобы использовать встроенный ключ"
+          />
           <button className="btn btn-primary" onClick={saveKey}>{t("actions.save")}</button>
         </div>
         <p className="mt-2 text-xs text-muted">
-          Без ключа обложки тянутся только из Steam CDN (для Steam-игр).
+          В release-сборках ключ зашит в бинарь через CI-секрет, ввод не требуется.
+          Личный ключ можно получить здесь: <a
+            href="https://www.steamgriddb.com/profile/preferences/api"
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent underline decoration-dotted underline-offset-2 hover:text-accent2"
+            onClick={(e) => {
+              e.preventDefault();
+              window.open("https://www.steamgriddb.com/profile/preferences/api", "_blank");
+            }}
+          >
+            steamgriddb.com/profile/preferences/api
+          </a>. Свой ключ перебивает встроенный (выше rate-limit, изолирован от остальных пользователей).
         </p>
       </section>
 

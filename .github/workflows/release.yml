@@ -47,14 +47,25 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
-      - name: Build (production, version-stamped)
+      - name: Build (production, version-stamped, key-injected)
         shell: pwsh
         env:
           CGO_ENABLED: '1'
+          STEAMGRIDDB_KEY: ${{ secrets.STEAMGRIDDB_KEY }}
         run: |
           $tag = "${{ github.ref_name }}"
           Write-Host "Building $tag"
-          wails build -trimpath -ldflags "-X main.AppVersion=$tag"
+          # Build -X ldflags: version + (optional) SteamGridDB key from repo secret.
+          # The key never lives in source; if the secret isn't set, the binary
+          # ships with an empty default and falls back to per-user Settings input.
+          $ld = "-X main.AppVersion=$tag"
+          if ($env:STEAMGRIDDB_KEY) {
+            $ld += " -X 'GameSaver/internal/meta.DefaultSteamGridDBKey=$env:STEAMGRIDDB_KEY'"
+            Write-Host "Embedded SteamGridDB key from repository secret"
+          } else {
+            Write-Host "STEAMGRIDDB_KEY secret is empty — binary will require per-user Settings input"
+          }
+          wails build -trimpath -ldflags $ld
           if (!(Test-Path build/bin/GameSaver.exe)) {
             throw "GameSaver.exe was not produced"
           }
