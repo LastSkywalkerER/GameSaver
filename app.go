@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -56,6 +57,11 @@ func (a *App) Startup(ctx context.Context) {
 	a.bk = backup.New(a.cfg, db)
 	a.launch = launcher.New(db)
 	a.updater = updater.New(AppVersion)
+
+	// Clean up the previous binary that minio/selfupdate leaves behind as a
+	// .<name>.old rollback file. We're now running the new exe, so the old
+	// one is safe to remove. Best-effort — never blocks startup.
+	cleanupOldExe()
 
 	// Sync DB with on-disk backups: re-import orphan snapshot zips into the
 	// snapshots table (and prune dead rows). Runs on every start; idempotent.
@@ -373,6 +379,32 @@ func (a *App) SkipUpdate(version string) error {
 func (a *App) SetAutoCheckUpdates(enabled bool) error {
 	a.cfg.AutoCheckUpdates = enabled
 	return config.Save(a.cfg)
+}
+
+// cleanupOldExe removes ".<exename>.old" next to the running executable, which
+// is the rollback artefact left by minio/selfupdate after a successful Apply.
+// Called from Startup so the file is gone by the first paint of the new build.
+func cleanupOldExe() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	dir := filepath.Dir(exe)
+	name := filepath.Base(exe)
+	// selfupdate's default name: "." + base + ".old", e.g. ".GameSaver.exe.old".
+	candidates := []string{
+		filepath.Join(dir, "."+name+".old"),
+		filepath.Join(dir, name+".old"),
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			if rmErr := os.Remove(p); rmErr == nil {
+				slog.Info("removed stale update rollback file", "path", p)
+			} else {
+				slog.Warn("could not remove rollback file", "path", p, "err", rmErr)
+			}
+		}
+	}
 }
 
 // RestartApp re-launches the process with the same arguments and exits the
