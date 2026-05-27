@@ -16,6 +16,7 @@ import (
 
 	"GameSaver/internal/backup"
 	"GameSaver/internal/config"
+	"GameSaver/internal/controller"
 	"GameSaver/internal/domain"
 	"GameSaver/internal/launcher"
 	"GameSaver/internal/match"
@@ -121,6 +122,14 @@ func (a *App) Startup(ctx context.Context) {
 		emit := func(ev string, payload any) { wailsruntime.EventsEmit(a.ctx, ev, payload) }
 		ds := dirsize.New(a.db, emit)
 		ds.Run(a.ctx, false)
+	}()
+
+	// XInput poller — emits controller:state/button/nav so the UI can show
+	// a 🎮 chip and drive d-pad menu navigation. Cheap when no controller
+	// connected (one syscall per 20 ms returning ERROR_DEVICE_NOT_CONNECTED).
+	go func() {
+		emit := func(ev string, payload any) { wailsruntime.EventsEmit(a.ctx, ev, payload) }
+		controller.New(emit).Run(a.ctx)
 	}()
 
 	slog.Info("startup complete", "version", AppVersion)

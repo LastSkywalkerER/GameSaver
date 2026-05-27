@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { forwardRef } from "react";
 import type { GameView } from "../api";
 import { coverUrl, formatBytes, formatDuration, formatRelative } from "../api";
 import { SourceBadge } from "./SourceBadge";
@@ -20,13 +21,11 @@ function installsByDrive(view: GameView): { drive: string; bytes: number }[] {
     .sort((a, b) => b.bytes - a.bytes);
 }
 
-export function GameTile({
-  view,
-  onClick,
-}: {
+export const GameTile = forwardRef<HTMLButtonElement, {
   view: GameView;
   onClick: () => void;
-}) {
+  tabIndex?: number;
+}>(function GameTile({ view, onClick, tabIndex }, ref) {
   const prefs = useTilePrefs();
   const g = view.game;
   const cover = coverUrl(g.coverPath);
@@ -42,10 +41,15 @@ export function GameTile({
 
   return (
     <button
+      ref={ref}
+      tabIndex={tabIndex}
       onClick={onClick}
       className={clsx(
         "group relative aspect-[2/3] w-full overflow-hidden rounded-xl2 border border-border bg-card text-left shadow-soft transition",
-        "hover:border-accent/60 hover:shadow-[0_6px_30px_rgba(124,92,255,0.25)] hover:-translate-y-0.5"
+        "hover:border-accent/60 hover:shadow-[0_6px_30px_rgba(124,92,255,0.25)] hover:-translate-y-0.5",
+        // Controller / keyboard focus — big visible ring so it's obvious
+        // which tile A would activate.
+        "focus:outline-none focus-visible:ring-4 focus-visible:ring-accent focus-visible:-translate-y-0.5"
       )}
     >
       {cover ? (
@@ -143,4 +147,4 @@ export function GameTile({
       </div>
     </button>
   );
-}
+});

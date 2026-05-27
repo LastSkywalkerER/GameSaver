@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GameView } from "../api";
 import { GameTile } from "../components/GameTile";
 import { useT } from "../i18n";
+import { useControllerButton, useControllerNav } from "../controller";
 
 export function DashboardPage({
   games,
@@ -50,6 +51,56 @@ export function DashboardPage({
     return arr;
   }, [games, query, filter, sortBy]);
 
+  // ── Controller navigation ──────────────────────────────────────────────
+  // Roving-focus model: only one tile in the grid is keyboard-focusable
+  // (tabIndex=0); the rest are -1. d-pad/LS moves the active index, A
+  // dispatches a click on the focused tile. We measure the actual rendered
+  // grid columns to compute up/down moves — Tailwind's responsive grid
+  // changes columns at sm/md/lg/xl breakpoints, so we can't hardcode it.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const tileRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [active, setActive] = useState(0);
+
+  // Clamp active when the filtered list shrinks (e.g. user typed a query).
+  useEffect(() => {
+    if (active >= filtered.length) setActive(Math.max(0, filtered.length - 1));
+  }, [filtered.length, active]);
+
+  // Move browser focus to the active tile so the ring shows up + scroll into view.
+  useEffect(() => {
+    const el = tileRefs.current[active];
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [active, filtered.length]);
+
+  function columnsNow(): number {
+    const grid = gridRef.current;
+    if (!grid) return 1;
+    // computed style "grid-template-columns" is "Npx Npx Npx …" — split.
+    const cols = getComputedStyle(grid).gridTemplateColumns;
+    return Math.max(1, cols.split(" ").filter(Boolean).length);
+  }
+
+  useControllerNav((dir) => {
+    if (filtered.length === 0) return;
+    setActive((idx) => {
+      const cols = columnsNow();
+      switch (dir) {
+        case "left":  return Math.max(0, idx - 1);
+        case "right": return Math.min(filtered.length - 1, idx + 1);
+        case "up":    return Math.max(0, idx - cols);
+        case "down":  return Math.min(filtered.length - 1, idx + cols);
+      }
+    });
+  });
+
+  useControllerButton((btn) => {
+    if (btn !== "a") return;
+    const g = filtered[active];
+    if (g) onOpen(g);
+  });
+
   if (!scanned && games.length === 0) {
     return <div className="p-10 text-center text-muted">{t("scan.never")}</div>;
   }
@@ -57,9 +108,18 @@ export function DashboardPage({
     return <div className="p-10 text-center text-muted">{t("scan.empty")}</div>;
   }
   return (
-    <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-      {filtered.map((g) => (
-        <GameTile key={g.game.id} view={g} onClick={() => onOpen(g)} />
+    <div
+      ref={gridRef}
+      className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+    >
+      {filtered.map((g, i) => (
+        <GameTile
+          key={g.game.id}
+          view={g}
+          ref={(el) => { tileRefs.current[i] = el; }}
+          tabIndex={i === active ? 0 : -1}
+          onClick={() => { setActive(i); onOpen(g); }}
+        />
       ))}
     </div>
   );

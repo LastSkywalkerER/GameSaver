@@ -10,6 +10,7 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { BackupsPage } from "./pages/BackupsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { setLanguage, useT } from "./i18n";
+import { useControllerButton } from "./controller";
 
 export default function App() {
   const t = useT();
@@ -115,6 +116,22 @@ export default function App() {
     catch (e) { console.error(e); }
   }
   async function onOpenBackups() { try { await api.OpenBackupFolder(); } catch (e) { console.error(e); } }
+
+  // Controller global actions: Start cycles top-level pages, B closes drawer.
+  // Per-page navigation (d-pad + A) is handled inside the relevant page.
+  const pages: Page[] = ["dashboard", "library", "backups", "settings"];
+  useControllerButton((btn) => {
+    if (btn === "b" && opened) {
+      setOpened(null);
+      return;
+    }
+    if (btn === "start") {
+      setPage((p) => {
+        const idx = pages.indexOf(p);
+        return pages[(idx + 1) % pages.length];
+      });
+    }
+  });
 
   const totalCount = games.length;
 

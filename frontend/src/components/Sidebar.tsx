@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useT } from "../i18n";
+import { useControllerConnected } from "../controller";
 
 export type Page = "dashboard" | "library" | "backups" | "settings";
 
@@ -14,6 +15,7 @@ export function Sidebar({
 }) {
   const t = useT();
   const [version, setVersion] = useState<string>("");
+  const padOn = useControllerConnected();
   useEffect(() => {
     api.AppVersion().then((v: any) => setVersion(typeof v === "string" ? v : ""));
   }, []);
@@ -46,6 +48,14 @@ export function Sidebar({
           </button>
         ))}
       </nav>
+      {padOn && (
+        <div
+          className="mx-3 mb-2 flex items-center justify-center gap-1 rounded-md border border-emerald-700/50 bg-emerald-900/40 px-2 py-1 text-[11px] text-emerald-200"
+          title="Xbox-совместимый контроллер подключён. D-pad/левый стик — навигация, A — открыть, B — назад, Start — следующая страница"
+        >
+          🎮 controller
+        </div>
+      )}
       <div
         className="px-4 py-3 text-[11px] text-muted"
         title="Версия пробивается в бинарь при сборке (ldflags). 'dev' = локальная сборка"
