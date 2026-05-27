@@ -62,6 +62,8 @@ export function OpenAutoLoginConfigurator():Promise<void>;
 
 export function OpenBackupFolder():Promise<void>;
 
+export function OpenWindowsSoundSettings():Promise<void>;
+
 export function PickFolder(arg1:string):Promise<string>;
 
 export function QuitApp():Promise<void>;

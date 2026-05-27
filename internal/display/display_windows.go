@@ -42,45 +42,51 @@ type displayDeviceW struct {
 	DeviceKey    [128]uint16
 }
 
-// DEVMODEW — variable-tailed but the leading layout we need is fixed.
-// Size is 220 bytes on modern Windows. We allocate that exact size so
-// the union/padding offsets line up with what the Win32 ABI expects.
+// DEVMODEW — exact-match for the Win32 ABI layout. sizeof(DEVMODEW) is
+// 220 bytes on modern Windows; mismatches by even one byte shift every
+// field past the offending one, which silently turns PelsHeight reads
+// into PelsWidth reads (and is rejected by ChangeDisplaySettingsEx as
+// DISP_CHANGE_BADMODE = -2). The MSDN layout has NO padding between
+// dmCollate/dmFormName or between dmLogPixels/dmBitsPerPel — Go's
+// natural alignment of uint32 takes care of the LogPixels→BitsPerPel
+// gap on its own, so we explicitly don't add filler shorts.
 type devModeW struct {
-	DeviceName    [32]uint16
-	SpecVersion   uint16
-	DriverVersion uint16
-	Size          uint16
-	DriverExtra   uint16
-	Fields        uint32
+	DeviceName    [32]uint16 // 0..63
+	SpecVersion   uint16     // 64..65
+	DriverVersion uint16     // 66..67
+	Size          uint16     // 68..69
+	DriverExtra   uint16     // 70..71
+	Fields        uint32     // 72..75
 
-	// Union: printer { 8 × int16 = 16 B } OR display { POINTL + 2 × DWORD = 16 B }
-	PositionX           int32
-	PositionY           int32
-	DisplayOrientation  uint32
-	DisplayFixedOutput  uint32
+	// Union: printer (8 × int16 = 16 B) OR display (POINTL + 2 × DWORD = 16 B)
+	PositionX          int32  // 76..79
+	PositionY          int32  // 80..83
+	DisplayOrientation uint32 // 84..87
+	DisplayFixedOutput uint32 // 88..91
 
-	Color       int16
-	Duplex      int16
-	YResolution int16
-	TTOption    int16
-	Collate     int16
-	_pad0       int16
-	FormName    [32]uint16
-	LogPixels   uint16
-	_pad1       uint16
-	BitsPerPel  uint32
-	PelsWidth   uint32
-	PelsHeight  uint32
-	DisplayFlags uint32
-	DisplayFrequency uint32
-	ICMMethod    uint32
-	ICMIntent    uint32
-	MediaType    uint32
-	DitherType   uint32
-	Reserved1    uint32
-	Reserved2    uint32
-	PanningWidth uint32
-	PanningHeight uint32
+	Color       int16 // 92..93
+	Duplex      int16 // 94..95
+	YResolution int16 // 96..97
+	TTOption    int16 // 98..99
+	Collate     int16 // 100..101
+	// dmFormName immediately follows dmCollate at offset 102 — no
+	// padding here in the canonical Win32 layout.
+	FormName  [32]uint16 // 102..165
+	LogPixels uint16     // 166..167
+	// Go auto-pads here so BitsPerPel lands at 168 (4-byte aligned).
+	BitsPerPel       uint32 // 168..171
+	PelsWidth        uint32 // 172..175
+	PelsHeight       uint32 // 176..179
+	DisplayFlags     uint32 // 180..183
+	DisplayFrequency uint32 // 184..187
+	ICMMethod        uint32 // 188..191
+	ICMIntent        uint32 // 192..195
+	MediaType        uint32 // 196..199
+	DitherType       uint32 // 200..203
+	Reserved1        uint32 // 204..207
+	Reserved2        uint32 // 208..211
+	PanningWidth     uint32 // 212..215
+	PanningHeight    uint32 // 216..219
 }
 
 const (
@@ -98,6 +104,7 @@ const (
 
 	// ChangeDisplaySettingsExW flags
 	cdsUpdateRegistry = 0x00000001
+	cdsSetPrimary     = 0x00000010
 	cdsNoreset        = 0x10000000
 	cdsReset          = 0x40000000
 
@@ -186,6 +193,16 @@ func List() ([]Monitor, error) {
 // MakeSole disables every active monitor except the one whose ID matches
 // `targetID`. The previous configuration is saved to disk so RestoreSaved()
 // can put everything back later.
+//
+// Two subtleties Windows insists on:
+//  1. You can't disable the current primary while it IS the current
+//     primary — Windows returns DISP_CHANGE_BADMODE (-2). So we first
+//     promote the target to (0,0) + CDS_SET_PRIMARY, then disable the
+//     rest.
+//  2. The "disable" magic itself is DM_PELSWIDTH|DM_PELSHEIGHT both = 0,
+//     plus DM_POSITION = (0,0). The whole batch is pushed with
+//     CDS_NORESET, then committed with a final ChangeDisplaySettingsEx
+//     (NULL,...,0,...) so everything happens atomically.
 func MakeSole(targetID string) error {
 	current, err := List()
 	if err != nil {
@@ -194,30 +211,54 @@ func MakeSole(targetID string) error {
 	if len(current) == 0 {
 		return errors.New("no displays found")
 	}
-	var found bool
-	for _, m := range current {
-		if m.ID == targetID {
-			found = true
+	var target *Monitor
+	for i := range current {
+		if current[i].ID == targetID {
+			target = &current[i]
 			break
 		}
 	}
-	if !found {
+	if target == nil {
 		return fmt.Errorf("target %q not in active monitor list", targetID)
 	}
-	// Already the only one? Nothing to do.
 	if len(current) == 1 {
 		return nil
 	}
 
 	if err := saveBackup(current); err != nil {
-		// Don't refuse — backup is nice-to-have, the user can still
-		// re-enable via Windows display settings.
 		_ = err
 	}
 
-	// Disable each non-target by zeroing its DEVMODE width/height/position
-	// and pushing with CDS_UPDATEREGISTRY|CDS_NORESET. Then commit with a
-	// single ChangeDisplaySettingsEx(NULL,…,0,…) to apply them all at once.
+	// 1. Promote target to primary at (0,0). Need to send the FULL existing
+	// DEVMODE so Windows keeps its resolution/refresh; we layer position
+	// and the SET_PRIMARY flag on top.
+	{
+		var dm devModeW
+		dm.Size = uint16(unsafe.Sizeof(dm))
+		// Pre-fill with current settings so width/height/refresh are correct.
+		idW, _ := syscall.UTF16PtrFromString(target.ID)
+		procEnumDisplaySettingsW.Call(
+			uintptr(unsafe.Pointer(idW)),
+			uintptr(enumCurrentSettings),
+			uintptr(unsafe.Pointer(&dm)),
+			0,
+		)
+		dm.PositionX = 0
+		dm.PositionY = 0
+		dm.Fields |= dmPosition | dmPelsWidth | dmPelsHeight
+		r, _, _ := procChangeDisplaySetting.Call(
+			uintptr(unsafe.Pointer(idW)),
+			uintptr(unsafe.Pointer(&dm)),
+			0,
+			uintptr(cdsSetPrimary|cdsUpdateRegistry|cdsNoreset),
+			0,
+		)
+		if int32(r) != dispChangeSuccessful {
+			return fmt.Errorf("set primary %s: ChangeDisplaySettingsEx returned %d", target.ID, int32(r))
+		}
+	}
+
+	// 2. Disable each non-target by zeroing its DEVMODE.
 	for _, m := range current {
 		if m.ID == targetID {
 			continue
@@ -225,7 +266,6 @@ func MakeSole(targetID string) error {
 		var dm devModeW
 		dm.Size = uint16(unsafe.Sizeof(dm))
 		dm.Fields = dmPosition | dmPelsWidth | dmPelsHeight
-		// width/height/position already zero
 		idW, _ := syscall.UTF16PtrFromString(m.ID)
 		r, _, _ := procChangeDisplaySetting.Call(
 			uintptr(unsafe.Pointer(idW)),
@@ -238,7 +278,8 @@ func MakeSole(targetID string) error {
 			return fmt.Errorf("disable %s: ChangeDisplaySettingsEx returned %d", m.ID, int32(r))
 		}
 	}
-	// Commit pending changes.
+
+	// 3. Commit pending changes.
 	r, _, _ := procChangeDisplaySetting.Call(0, 0, 0, 0, 0)
 	if int32(r) != dispChangeSuccessful {
 		return fmt.Errorf("commit: ChangeDisplaySettingsEx returned %d", int32(r))
@@ -247,8 +288,10 @@ func MakeSole(targetID string) error {
 }
 
 // RestoreSaved re-enables monitors disabled by MakeSole using the saved
-// snapshot. If there's no snapshot (no MakeSole was ever called, or it
-// was already restored), returns nil silently.
+// snapshot. We put the original primary back FIRST (with CDS_SET_PRIMARY)
+// so the other monitors can attach to a non-primary slot without Windows
+// complaining about the topology. Returns nil silently if there's no
+// snapshot.
 func RestoreSaved() error {
 	snap, ok, err := loadBackup()
 	if err != nil {
@@ -257,7 +300,8 @@ func RestoreSaved() error {
 	if !ok {
 		return nil
 	}
-	for _, m := range snap {
+
+	apply := func(m Monitor, makePrimary bool) error {
 		var dm devModeW
 		dm.Size = uint16(unsafe.Sizeof(dm))
 		dm.Fields = dmPosition | dmPelsWidth | dmPelsHeight
@@ -265,21 +309,42 @@ func RestoreSaved() error {
 		dm.PositionY = int32(m.PositionY)
 		dm.PelsWidth = uint32(m.Width)
 		dm.PelsHeight = uint32(m.Height)
+		flags := uint32(cdsUpdateRegistry | cdsNoreset)
+		if makePrimary {
+			flags |= cdsSetPrimary
+		}
 		idW, _ := syscall.UTF16PtrFromString(m.ID)
 		r, _, _ := procChangeDisplaySetting.Call(
 			uintptr(unsafe.Pointer(idW)),
 			uintptr(unsafe.Pointer(&dm)),
 			0,
-			uintptr(cdsUpdateRegistry|cdsNoreset),
+			uintptr(flags),
 			0,
 		)
 		if int32(r) != dispChangeSuccessful {
 			return fmt.Errorf("restore %s: ChangeDisplaySettingsEx returned %d", m.ID, int32(r))
 		}
+		return nil
 	}
-	// Commit.
+
+	// Pass 1: the original primary.
+	for _, m := range snap {
+		if m.IsPrimary {
+			if err := apply(m, true); err != nil {
+				return err
+			}
+		}
+	}
+	// Pass 2: everything else.
+	for _, m := range snap {
+		if !m.IsPrimary {
+			if err := apply(m, false); err != nil {
+				return err
+			}
+		}
+	}
+
 	procChangeDisplaySetting.Call(0, 0, 0, 0, 0)
-	// Backup applied — remove it so a future MakeSole captures fresh state.
 	_ = os.Remove(backupPath())
 	return nil
 }

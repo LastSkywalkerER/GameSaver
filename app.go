@@ -745,6 +745,19 @@ func (a *App) GetAutoLoginStatus() (*AutoLoginStatus, error) {
 	return &AutoLoginStatus{CheckboxHidden: hidden}, nil
 }
 
+// OpenWindowsSoundSettings launches the Win10/11 sound settings page so
+// the user can pick a default output device. Pure shell-out — no Win32
+// audio API integration here; a proper in-app picker is being worked on
+// for v0.6.4 via IPolicyConfig.
+func (a *App) OpenWindowsSoundSettings() error {
+	// `start ms-settings:sound` opens the modern Settings panel.
+	// Fall back to mmsys.cpl (classic Sound dialog) if not available.
+	if err := exec.Command("cmd", "/c", "start", "ms-settings:sound").Start(); err == nil {
+		return nil
+	}
+	return exec.Command("control.exe", "mmsys.cpl").Start()
+}
+
 // OpenAutoLoginConfigurator unhides the netplwiz checkbox if needed
 // (triggering a single UAC prompt) and then opens netplwiz. The user
 // finishes the rest in Windows.

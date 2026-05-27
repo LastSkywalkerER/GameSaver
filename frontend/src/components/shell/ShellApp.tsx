@@ -115,13 +115,18 @@ export function ShellApp({
   }, [sorted.length]);
 
   // ── Controller navigation ────────────────────────────────────────────
+  // While the monitor picker is up, every input goes to it — otherwise a
+  // d-pad left in the picker would also shift the carousel cursor behind
+  // it, and A would launch a game instead of confirming the picker.
+  const inputBlocked = overlay !== "none" || monitorsToPick !== null;
   useControllerNav((dir) => {
-    if (overlay !== "none") return; // overlay has its own input (or none yet)
+    if (inputBlocked) return;
     if (dir === "left")  moveCursor(-1);
     if (dir === "right") moveCursor(+1);
   });
 
   useControllerButton((btn) => {
+    if (monitorsToPick !== null) return; // picker owns the controller
     if (overlay !== "none") {
       if (btn === "b") {
         playBack();
@@ -153,6 +158,7 @@ export function ShellApp({
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
+      if (monitorsToPick !== null) return; // picker owns the keyboard
       if (overlay !== "none") {
         if (e.key === "Escape") { e.preventDefault(); playBack(); setOverlay("none"); }
         return;
@@ -171,7 +177,7 @@ export function ShellApp({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [overlay, active, moveCursor]);
+  }, [overlay, active, moveCursor, monitorsToPick]);
 
   // ── Mouse-wheel navigation ──────────────────────────────────────────
   // One wheel notch (or one trackpad scroll-step) advances the carousel
@@ -180,7 +186,7 @@ export function ShellApp({
   const wheelLockRef = useRef(0);
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (overlay !== "none") return;
+      if (overlay !== "none" || monitorsToPick !== null) return;
       const now = Date.now();
       if (now - wheelLockRef.current < 150) return;
       // deltaY > 0 = scroll down/forward → next tile.
@@ -193,7 +199,7 @@ export function ShellApp({
     };
     window.addEventListener("wheel", onWheel, { passive: true });
     return () => window.removeEventListener("wheel", onWheel);
-  }, [overlay, moveCursor]);
+  }, [overlay, moveCursor, monitorsToPick]);
 
   async function doLaunch(g: GameView) {
     playSelect();

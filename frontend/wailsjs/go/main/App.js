@@ -106,6 +106,10 @@ export function OpenBackupFolder() {
   return window['go']['main']['App']['OpenBackupFolder']();
 }
 
+export function OpenWindowsSoundSettings() {
+  return window['go']['main']['App']['OpenWindowsSoundSettings']();
+}
+
 export function PickFolder(arg1) {
   return window['go']['main']['App']['PickFolder'](arg1);
 }

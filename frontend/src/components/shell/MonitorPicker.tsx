@@ -24,6 +24,13 @@ export type Monitor = {
 
 const REMEMBERED_KEY = "gs:soleMonitorId";
 
+// "\\.\DISPLAY1" → "DISPLAY 1" so the user can match the card to what
+// Windows itself labels the screen as in its display settings.
+function displayLabel(id: string): string {
+  const m = id.match(/DISPLAY(\d+)/i);
+  return m ? `DISPLAY ${m[1]}` : id;
+}
+
 export function MonitorPicker({
   monitors,
   onDone,
@@ -135,10 +142,16 @@ export function MonitorPicker({
               )}
               style={{ left, top, width: w, height: h }}
             >
+              <div className="text-lg font-bold text-accent">
+                {displayLabel(m.id)}
+              </div>
               <div className="text-sm font-semibold text-gray-100">{m.name}</div>
               <div className="text-xs text-gray-400">
                 {m.width} × {m.height}
                 {m.isPrimary && " · primary"}
+              </div>
+              <div className="text-[10px] text-muted">
+                @ {m.positionX},{m.positionY}
               </div>
             </button>
           );

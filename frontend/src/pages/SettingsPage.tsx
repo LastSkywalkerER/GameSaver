@@ -339,6 +339,22 @@ export function SettingsPage() {
             <button className="btn" onClick={playBack}>▶ Back</button>
           </div>
         )}
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="text-[11px] uppercase tracking-wide text-muted">Устройство вывода</div>
+          <p className="mt-1 text-xs text-muted">
+            Откроет системные «Параметры → Звук». Встроенный селектор
+            устройств добавим в v0.6.4.
+          </p>
+          <button
+            className="btn mt-2"
+            onClick={async () => {
+              try { await (api as any).OpenWindowsSoundSettings(); }
+              catch (e) { api.Toast("error", "Не открылось: " + String(e)); }
+            }}
+          >
+            🔊 Открыть «Параметры → Звук»
+          </button>
+        </div>
       </section>
 
       <section className="card p-4">
