@@ -5,6 +5,7 @@ import {updater} from '../models';
 import {context} from '../models';
 import {match} from '../models';
 import {config} from '../models';
+import {main} from '../models';
 import {backup} from '../models';
 import {pipeline} from '../models';
 
@@ -28,9 +29,15 @@ export function DeepScanGame(arg1:string):Promise<Array<match.DeepScanResult>>;
 
 export function DeleteSnapshot(arg1:string):Promise<void>;
 
+export function DisableShellMode():Promise<void>;
+
+export function EnableShellMode():Promise<void>;
+
 export function GetConfig():Promise<config.Config>;
 
 export function GetGame(arg1:string):Promise<domain.GameView>;
+
+export function GetShellModeStatus():Promise<main.ShellModeStatus>;
 
 export function HideGame(arg1:string,arg2:boolean):Promise<void>;
 

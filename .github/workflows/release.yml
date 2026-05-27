@@ -72,21 +72,40 @@ jobs:
           $size = (Get-Item build/bin/GameSaver.exe).Length
           Write-Host ("Built {0:N1} MB" -f ($size/1MB))
 
+      - name: Build watchdog (separate small exe for shell-mode users)
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          $tag = "${{ github.ref_name }}"
+          # Pure-Go build (no cgo) so the watchdog stays tiny (~2 MB stripped).
+          # -H windowsgui suppresses the console window that pops up otherwise
+          # — important since the watchdog runs as the user's shell at logon.
+          go build -trimpath `
+            -ldflags "-s -w -H windowsgui -X main.Version=$tag" `
+            -o gamesaver-watchdog-windows-amd64.exe `
+            ./cmd/gamesaver-watchdog
+          $size = (Get-Item gamesaver-watchdog-windows-amd64.exe).Length
+          Write-Host ("Watchdog: {0:N1} MB" -f ($size/1MB))
+
       - name: Package portable .zip + checksums
         id: package
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           $zipName = "GameSaver-$tag-windows-amd64.zip"
+          $watchdog = "gamesaver-watchdog-windows-amd64.exe"
           Compress-Archive -Path build/bin/GameSaver.exe -DestinationPath $zipName -Force
           $zipSha = (Get-FileHash $zipName -Algorithm SHA256).Hash.ToLower()
           $exeSha = (Get-FileHash build/bin/GameSaver.exe -Algorithm SHA256).Hash.ToLower()
+          $wdSha  = (Get-FileHash $watchdog -Algorithm SHA256).Hash.ToLower()
           @(
             "$zipSha  $zipName",
-            "$exeSha  GameSaver.exe"
+            "$exeSha  GameSaver.exe",
+            "$wdSha  $watchdog"
           ) | Set-Content -Encoding ASCII -NoNewline -Path checksums.txt
           "Built artefacts:" | Write-Host
-          Get-ChildItem GameSaver-*.zip, checksums.txt | Select-Object Name, Length
+          Get-ChildItem GameSaver-*.zip, gamesaver-watchdog-*.exe, checksums.txt | Select-Object Name, Length
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -97,4 +116,5 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             GameSaver-*-windows-amd64.zip
+            gamesaver-watchdog-windows-amd64.exe
             checksums.txt

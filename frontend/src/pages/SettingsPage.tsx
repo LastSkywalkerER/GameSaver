@@ -3,11 +3,19 @@ import { api, type AppConfig } from "../api";
 import { setLanguage, useT } from "../i18n";
 import { TILE_PREF_LABELS, setTilePref, useTilePrefs, type TilePrefs } from "../tilePrefs";
 
+type ShellStatus = {
+  watchdogPresent: boolean;
+  registered: boolean;
+  runningAsShell: boolean;
+};
+
 export function SettingsPage() {
   const t = useT();
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [key, setKey] = useState("");
   const [reconciling, setReconciling] = useState(false);
+  const [shell, setShell] = useState<ShellStatus | null>(null);
+  const [shellBusy, setShellBusy] = useState(false);
   const tilePrefs = useTilePrefs();
 
   useEffect(() => {
@@ -16,7 +24,54 @@ export function SettingsPage() {
       setKey(c?.steamGridDbKey ?? "");
       if (c?.language) setLanguage(c.language);
     });
+    refreshShellStatus();
   }, []);
+
+  async function refreshShellStatus() {
+    try {
+      const s: any = await api.GetShellModeStatus();
+      setShell(s);
+    } catch (e) { console.error(e); }
+  }
+
+  async function enableShellMode() {
+    const ok = window.confirm(
+      "Включить режим оболочки?\n\n" +
+      "• После следующего входа в Windows загрузится ТОЛЬКО GameSaver — без " +
+      "панели задач, меню Пуск, иконок рабочего стола и системного трея.\n" +
+      "• Системный трей перестанет работать (он живёт на Explorer).\n" +
+      "• Если GameSaver упадёт несколько раз подряд, watchdog сам отключит " +
+      "режим и вернёт Explorer.\n" +
+      "• Аварийный выход: Ctrl+Alt+Shift+F12 в любой момент.\n" +
+      "• Также можно выйти из режима кнопкой ниже без перезагрузки.\n\n" +
+      "При первом включении watchdog (~2 МБ) скачается с GitHub Releases " +
+      "в %LOCALAPPDATA%\\GameSaver\\bin\\."
+    );
+    if (!ok) return;
+    setShellBusy(true);
+    try {
+      await api.EnableShellMode();
+      api.Toast("success", "Shell mode включён. Перезагрузка применит изменения.");
+      await refreshShellStatus();
+    } catch (e) {
+      api.Toast("error", "Не удалось включить shell mode: " + String(e));
+    } finally {
+      setShellBusy(false);
+    }
+  }
+
+  async function disableShellMode() {
+    setShellBusy(true);
+    try {
+      await api.DisableShellMode();
+      api.Toast("success", "Shell mode выключен. Следующий вход вернёт обычный рабочий стол.");
+      await refreshShellStatus();
+    } catch (e) {
+      api.Toast("error", "Не удалось выключить shell mode: " + String(e));
+    } finally {
+      setShellBusy(false);
+    }
+  }
 
   async function pickBackup() {
     const p = await api.PickFolder("Pick a folder for backups");
@@ -229,6 +284,50 @@ export function SettingsPage() {
           <span className="text-xs text-muted">
             Тянет latest release из github.com/LastSkywalkerER/GameSaver
           </span>
+        </div>
+      </section>
+
+      <section className="card border-red-700/40 p-4">
+        <div className="text-xs uppercase tracking-wide text-red-300">
+          ⚠ Режим оболочки (shell replacement)
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Заменяет Explorer на GameSaver при входе в Windows. Получишь
+          Big-Picture-подобный лаунчер без рабочего стола, панели задач, меню Пуск
+          и системного трея. Watchdog (~2 МБ) скачается с GitHub Releases в{" "}
+          <code className="rounded bg-card px-1">%LOCALAPPDATA%\GameSaver\bin\</code>{" "}
+          и сам перезапустит прилу при падении. Аварийный выход —{" "}
+          <kbd className="rounded border border-border bg-card px-1">
+            Ctrl+Alt+Shift+F12
+          </kbd>.
+        </p>
+        <div className="mt-3 flex items-center gap-3">
+          {shell?.registered ? (
+            <button
+              className="btn btn-primary"
+              disabled={shellBusy}
+              onClick={disableShellMode}
+            >
+              {shellBusy ? "…" : "🛑 Выйти из shell-режима"}
+            </button>
+          ) : (
+            <button
+              className="btn"
+              disabled={shellBusy}
+              onClick={enableShellMode}
+            >
+              {shellBusy ? "↻ Включаем…" : "🖥 Включить shell-режим"}
+            </button>
+          )}
+          <div className="text-xs text-muted">
+            {shell?.runningAsShell && (
+              <span className="text-amber-300">Сейчас под watchdog'ом. </span>
+            )}
+            {shell?.registered
+              ? "Зарегистрирован: следующий вход в Windows запустит GameSaver вместо Explorer."
+              : "Не зарегистрирован: обычный рабочий стол."}
+            {!shell?.watchdogPresent && " Watchdog ещё не скачан."}
+          </div>
         </div>
       </section>
     </div>

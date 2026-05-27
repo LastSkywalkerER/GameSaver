@@ -42,12 +42,24 @@ export function DeleteSnapshot(arg1) {
   return window['go']['main']['App']['DeleteSnapshot'](arg1);
 }
 
+export function DisableShellMode() {
+  return window['go']['main']['App']['DisableShellMode']();
+}
+
+export function EnableShellMode() {
+  return window['go']['main']['App']['EnableShellMode']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
 export function GetGame(arg1) {
   return window['go']['main']['App']['GetGame'](arg1);
+}
+
+export function GetShellModeStatus() {
+  return window['go']['main']['App']['GetShellModeStatus']();
 }
 
 export function HideGame(arg1, arg2) {

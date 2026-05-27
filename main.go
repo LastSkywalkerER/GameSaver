@@ -45,12 +45,23 @@ func main() {
 
 	app := NewApp(cfg)
 
+	// GS_SHELL_MODE=1 means we're running under gamesaver-watchdog.exe as
+	// the registered Windows shell. In that mode:
+	//   – Explorer is not running, so the system tray doesn't exist → skip
+	//     tray init entirely (otherwise getlantern/systray hangs forever
+	//     waiting for the tray host).
+	//   – The X button is treated as a real exit so the user can leave; the
+	//     watchdog only relaunches on crash (non-zero exit), not clean exit.
+	shellMode := os.Getenv("GS_SHELL_MODE") == "1"
+
 	// Start tray on a background goroutine. On Windows the systray loop is
 	// happy off the main thread (macOS would require otherwise; we're Windows
 	// only). Tray "Open" / "Backup all" / "Watcher" / "Quit" all proxy back
 	// to App via the AppController interface.
-	tray.Init(trayIcon, app)
-	go tray.Run()
+	if !shellMode {
+		tray.Init(trayIcon, app)
+		go tray.Run()
+	}
 
 	err = wails.Run(&options.App{
 		Title:            "GameSaver",
@@ -72,6 +83,11 @@ func main() {
 		// path internally (visible as a 1–2 s freeze in WebView2 before the
 		// hide kicks in). Returning true cancels the actual close.
 		OnBeforeClose: func(ctx context.Context) bool {
+			if shellMode {
+				// No tray to hide to — let Wails close us. Watchdog won't
+				// relaunch because we'll return exit 0.
+				return false
+			}
 			wailsruntime.WindowHide(ctx)
 			return true
 		},
@@ -102,7 +118,9 @@ func main() {
 			DisableFramelessWindowDecorations: false,
 		},
 	})
-	tray.Quit()
+	if !shellMode {
+		tray.Quit()
+	}
 	if err != nil {
 		slog.Error("wails run", "err", err)
 		os.Exit(1)

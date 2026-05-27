@@ -24,6 +24,7 @@ import (
 	"GameSaver/internal/playtime"
 	"GameSaver/internal/scan/dirsize"
 	"GameSaver/internal/scan/pipeline"
+	"GameSaver/internal/shellmode"
 	"GameSaver/internal/storage/sqlite"
 	"GameSaver/internal/tray"
 	"GameSaver/internal/updater"
@@ -605,4 +606,60 @@ func (a *App) Toast(level, message string) {
 		"level":   level,
 		"message": message,
 	})
+}
+
+// ===== Shell mode (HKCU\...\Winlogon\Shell) =====
+//
+// On enable we download the small watchdog binary from the latest GitHub
+// release into %LOCALAPPDATA%\GameSaver\bin\, write the current
+// GameSaver.exe path next to it, and point the registry at the watchdog.
+// On disable we just nuke the registry value — the watchdog stays on disk
+// so re-enable is instant.
+
+// ShellModeStatus is the structured payload returned to the UI so a single
+// poll gives the full picture (downloaded? registered? running under shell?).
+type ShellModeStatus struct {
+	WatchdogPresent bool `json:"watchdogPresent"`
+	Registered      bool `json:"registered"`
+	RunningAsShell  bool `json:"runningAsShell"`
+}
+
+func (a *App) GetShellModeStatus() (*ShellModeStatus, error) {
+	paths, err := shellmode.ResolvePaths()
+	if err != nil {
+		return nil, err
+	}
+	reg, err := shellmode.IsRegistered()
+	if err != nil {
+		return nil, err
+	}
+	return &ShellModeStatus{
+		WatchdogPresent: paths.WatchdogPresent(),
+		Registered:      reg,
+		RunningAsShell:  os.Getenv("GS_SHELL_MODE") == "1",
+	}, nil
+}
+
+// EnableShellMode downloads the watchdog if missing, then writes the
+// HKCU\...\Winlogon\Shell registry value. The UI is expected to have
+// shown the user a big scary warning before calling this.
+func (a *App) EnableShellMode() error {
+	if _, err := shellmode.EnsureWatchdog(a.ctx); err != nil {
+		return fmt.Errorf("download watchdog: %w", err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve self exe: %w", err)
+	}
+	if err := shellmode.Enable(exe); err != nil {
+		return fmt.Errorf("write registry: %w", err)
+	}
+	return nil
+}
+
+// DisableShellMode clears the registry value. If we're currently running
+// under the watchdog, the user will need to restart for it to take effect
+// (we don't kill the watchdog from here — that would close the running app).
+func (a *App) DisableShellMode() error {
+	return shellmode.Disable()
 }

@@ -277,6 +277,27 @@ export namespace domain {
 
 }
 
+export namespace main {
+	
+	export class ShellModeStatus {
+	    watchdogPresent: boolean;
+	    registered: boolean;
+	    runningAsShell: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ShellModeStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.watchdogPresent = source["watchdogPresent"];
+	        this.registered = source["registered"];
+	        this.runningAsShell = source["runningAsShell"];
+	    }
+	}
+
+}
+
 export namespace match {
 	
 	export class DeepScanResult {
