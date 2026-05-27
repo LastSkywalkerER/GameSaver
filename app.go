@@ -14,6 +14,7 @@ import (
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"GameSaver/internal/autologin"
 	"GameSaver/internal/backup"
 	"GameSaver/internal/config"
 	"GameSaver/internal/controller"
@@ -697,4 +698,40 @@ func (a *App) MakeSoleMonitor(id string) error {
 // displays in the first place).
 func (a *App) RestoreMonitorConfig() error {
 	return display.RestoreSaved()
+}
+
+// ===== Windows passwordless auto-logon helper =====
+//
+// We deliberately don't touch the user's password ourselves. The Settings
+// UI offers a button that:
+//   1. On Win11 22H2+, unhides the netplwiz "Users must enter a user
+//      name and password..." checkbox (needs one UAC prompt).
+//   2. Launches netplwiz so the user types their password into the OS UI.
+// Windows stores the password in encrypted LSA secrets — much safer than
+// the legacy AutoAdminLogon plain-text registry approach.
+
+// AutoLoginStatus is the snapshot for the Settings UI.
+type AutoLoginStatus struct {
+	CheckboxHidden bool `json:"checkboxHidden"`
+}
+
+func (a *App) GetAutoLoginStatus() (*AutoLoginStatus, error) {
+	hidden, err := autologin.CheckboxHidden()
+	if err != nil {
+		return nil, err
+	}
+	return &AutoLoginStatus{CheckboxHidden: hidden}, nil
+}
+
+// OpenAutoLoginConfigurator unhides the netplwiz checkbox if needed
+// (triggering a single UAC prompt) and then opens netplwiz. The user
+// finishes the rest in Windows.
+func (a *App) OpenAutoLoginConfigurator() error {
+	if err := autologin.UnhideCheckbox(); err != nil {
+		// Continue even if unhide failed — on Win10 / older Win11 the
+		// checkbox is already visible and the user can proceed without
+		// our reg tweak.
+		return autologin.OpenNetplwiz()
+	}
+	return autologin.OpenNetplwiz()
 }

@@ -50,6 +50,10 @@ export function EnableShellMode() {
   return window['go']['main']['App']['EnableShellMode']();
 }
 
+export function GetAutoLoginStatus() {
+  return window['go']['main']['App']['GetAutoLoginStatus']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
@@ -88,6 +92,10 @@ export function ListPlaySessions(arg1, arg2) {
 
 export function MakeSoleMonitor(arg1) {
   return window['go']['main']['App']['MakeSoleMonitor'](arg1);
+}
+
+export function OpenAutoLoginConfigurator() {
+  return window['go']['main']['App']['OpenAutoLoginConfigurator']();
 }
 
 export function OpenBackupFolder() {

@@ -310,6 +310,18 @@ export namespace domain {
 
 export namespace main {
 	
+	export class AutoLoginStatus {
+	    checkboxHidden: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AutoLoginStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.checkboxHidden = source["checkboxHidden"];
+	    }
+	}
 	export class ShellModeStatus {
 	    watchdogPresent: boolean;
 	    registered: boolean;

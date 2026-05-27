@@ -301,6 +301,38 @@ export function SettingsPage() {
         </div>
       </section>
 
+      <section className="card p-4">
+        <div className="text-xs uppercase tracking-wide text-muted">
+          Авто-вход Windows (без пароля)
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Пароль на учётке останется, но Windows перестанет спрашивать его при
+          входе. Полезно для shell-режима — система сама загрузится в
+          GameSaver без участия клавиатуры. Жмёшь кнопку → откроется
+          стандартное окно <code className="rounded bg-card px-1">netplwiz</code>{" "}
+          → снимаешь галочку <em>«Users must enter a user name and password…»</em>{" "}
+          → вводишь пароль (Windows сохранит его в зашифрованном LSA, не в
+          реестре).
+          {" "}На Windows 11 22H2+ галочка скрыта по умолчанию — мы её включим
+          через одну UAC-подсказку.
+        </p>
+        <div className="mt-3">
+          <button
+            className="btn"
+            onClick={async () => {
+              try {
+                await api.OpenAutoLoginConfigurator();
+                api.Toast("info", "Открыли netplwiz — снимай галочку и подтверждай.");
+              } catch (e) {
+                api.Toast("error", "Не удалось открыть: " + String(e));
+              }
+            }}
+          >
+            🔓 Настроить авто-вход
+          </button>
+        </div>
+      </section>
+
       <section className="card border-red-700/40 p-4">
         <div className="text-xs uppercase tracking-wide text-red-300">
           ⚠ Режим оболочки (shell replacement)

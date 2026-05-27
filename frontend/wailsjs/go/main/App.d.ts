@@ -4,8 +4,8 @@ import {domain} from '../models';
 import {updater} from '../models';
 import {context} from '../models';
 import {match} from '../models';
-import {config} from '../models';
 import {main} from '../models';
+import {config} from '../models';
 import {display} from '../models';
 import {backup} from '../models';
 import {pipeline} from '../models';
@@ -34,6 +34,8 @@ export function DisableShellMode():Promise<void>;
 
 export function EnableShellMode():Promise<void>;
 
+export function GetAutoLoginStatus():Promise<main.AutoLoginStatus>;
+
 export function GetConfig():Promise<config.Config>;
 
 export function GetGame(arg1:string):Promise<domain.GameView>;
@@ -53,6 +55,8 @@ export function ListMonitors():Promise<Array<display.Monitor>>;
 export function ListPlaySessions(arg1:string,arg2:number):Promise<Array<domain.PlaySession>>;
 
 export function MakeSoleMonitor(arg1:string):Promise<void>;
+
+export function OpenAutoLoginConfigurator():Promise<void>;
 
 export function OpenBackupFolder():Promise<void>;
 
