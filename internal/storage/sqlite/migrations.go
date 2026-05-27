@@ -103,11 +103,15 @@ var migrations = []string{
 }
 
 // extraColumns is run AFTER the main statements to retrofit columns onto an
-// existing DB whose `games` table predates them. Each entry is added only if
+// existing DB whose tables predate them. Each entry is added only if
 // missing — safe to keep here forever.
 var extraColumns = []struct{ table, col, def string }{
 	{"games", "last_played_at", "INTEGER NOT NULL DEFAULT 0"},
 	{"games", "total_play_seconds", "INTEGER NOT NULL DEFAULT 0"},
+	// Total on-disk size of the installation root, computed lazily after scan
+	// (separate from size_bytes which holds the launch exe's own size).
+	{"installations", "install_dir_size_bytes", "INTEGER NOT NULL DEFAULT 0"},
+	{"installations", "install_dir_size_at", "INTEGER NOT NULL DEFAULT 0"},
 }
 
 func applyMigrations(db *sql.DB) error {

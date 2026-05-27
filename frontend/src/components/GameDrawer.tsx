@@ -164,21 +164,39 @@ export function GameDrawer({
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">{t("drawer.installations")}</h3>
             {view.installations.length === 0 && <p className="text-sm text-muted">{t("drawer.noInstallations")}</p>}
             <div className="grid gap-2">
-              {view.installations.map((inst) => (
-                <div key={inst.id} className="card flex items-center justify-between gap-3 px-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-xs"><SourceBadge source={inst.source} /></div>
-                    <div className="mt-1 truncate text-sm text-gray-200" title={inst.rootPath}>{inst.rootPath}</div>
-                    <div className="truncate text-xs text-muted" title={inst.exePath}>{inst.exePath}</div>
+              {view.installations.map((inst) => {
+                const dirSize = inst.installDirSizeBytes ?? 0;
+                const measured = (inst.installDirSizeAt ?? 0) > 0;
+                return (
+                  <div key={inst.id} className="card flex items-center justify-between gap-3 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-xs">
+                        <SourceBadge source={inst.source} />
+                        {dirSize > 0 ? (
+                          <span
+                            className="chip border-amber-700/50 bg-amber-900/40 text-amber-200"
+                            title={"Размер папки игры: " + formatBytes(dirSize)}
+                          >
+                            💾 {formatBytes(dirSize)}
+                          </span>
+                        ) : measured ? (
+                          <span className="chip">пусто</span>
+                        ) : (
+                          <span className="chip text-muted" title="Размер ещё не подсчитан — фоновый walker в работе">…</span>
+                        )}
+                      </div>
+                      <div className="mt-1 truncate text-sm text-gray-200" title={inst.rootPath}>{inst.rootPath}</div>
+                      <div className="truncate text-xs text-muted" title={inst.exePath}>{inst.exePath}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button className="btn" onClick={() => api.ShowItemInFolder(inst.rootPath).catch((e) => api.Toast("error", "Открыть папку: " + String(e)))}>📁</button>
+                      <button className="btn btn-primary" disabled={busy === "launch"} onClick={() => doLaunch(inst.id)}>
+                        ▶ {t("actions.play")}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button className="btn" onClick={() => api.ShowItemInFolder(inst.rootPath).catch((e) => api.Toast("error", "Открыть папку: " + String(e)))}>📁</button>
-                    <button className="btn btn-primary" disabled={busy === "launch"} onClick={() => doLaunch(inst.id)}>
-                      ▶ {t("actions.play")}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 

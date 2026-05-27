@@ -21,6 +21,7 @@ import (
 	"GameSaver/internal/match"
 	"GameSaver/internal/meta"
 	"GameSaver/internal/playtime"
+	"GameSaver/internal/scan/dirsize"
 	"GameSaver/internal/scan/pipeline"
 	"GameSaver/internal/storage/sqlite"
 	"GameSaver/internal/tray"
@@ -108,6 +109,19 @@ func (a *App) Startup(ctx context.Context) {
 	if a.cfg.AutoCheckUpdates {
 		go a.backgroundUpdateCheck()
 	}
+
+	// Catch up on install-dir sizes for installs that have never been measured
+	// or whose value is stale (>24h). Runs after a small delay so it doesn't
+	// fight startup I/O.
+	go func() {
+		time.Sleep(15 * time.Second)
+		if a.ctx == nil {
+			return
+		}
+		emit := func(ev string, payload any) { wailsruntime.EventsEmit(a.ctx, ev, payload) }
+		ds := dirsize.New(a.db, emit)
+		ds.Run(a.ctx, false)
+	}()
 
 	slog.Info("startup complete", "version", AppVersion)
 }
@@ -212,6 +226,13 @@ func (a *App) ScanLibrary() (*pipeline.Result, error) {
 
 	// Fetch covers/metadata.
 	a.meta.EnrichAll(a.ctx, emit)
+
+	// Compute install-dir sizes in the background — slow for big games on HDD,
+	// so we don't block the scan result. UI updates row-by-row via "inst:size".
+	go func() {
+		ds := dirsize.New(a.db, emit)
+		ds.Run(a.ctx, false)
+	}()
 
 	return res, nil
 }

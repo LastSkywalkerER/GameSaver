@@ -69,6 +69,7 @@ export default function App() {
     const offUpdate = EventsOn("update:available", (info: any) => {
       setUpdate(info as UpdateInfo);
     });
+    const offInstSize = EventsOn("inst:size", () => { refresh(); });
     const offReconcile = EventsOn("reconcile:done", (r: any) => {
       const created = (r?.createdGames ?? 0) + (r?.createdLocations ?? 0);
       const msg = `Бэкапы синхронизированы: импорт ${r?.importedSnapshots ?? 0}` +
@@ -78,7 +79,7 @@ export default function App() {
       refresh();
     });
     return () => {
-      try { (offProg as any)?.(); (offSrc as any)?.(); (offGame as any)?.(); (offMatch as any)?.(); (offMeta as any)?.(); (offDone as any)?.(); (offRevProg as any)?.(); (offRevDone as any)?.(); (offReconcile as any)?.(); (offUpdate as any)?.(); } catch {}
+      try { (offProg as any)?.(); (offSrc as any)?.(); (offGame as any)?.(); (offMatch as any)?.(); (offMeta as any)?.(); (offDone as any)?.(); (offRevProg as any)?.(); (offRevDone as any)?.(); (offReconcile as any)?.(); (offUpdate as any)?.(); (offInstSize as any)?.(); } catch {}
     };
   }, []);
 

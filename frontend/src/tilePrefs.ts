@@ -11,6 +11,7 @@ export type TilePrefs = {
   showLastPlayed: boolean;    // top-left "▶ <relative>" chip
   showPlaytime: boolean;      // top-left "⏱ <duration>" chip
   showLastBackup: boolean;    // top-left "⛁ <relative>" chip
+  showInstallSize: boolean;   // top-left "💾 H: 87 GB" per-drive chips
   showNewBadges: boolean;     // "NEW" / "только сейв" status pills
 };
 
@@ -21,6 +22,7 @@ const DEFAULTS: TilePrefs = {
   showLastPlayed: true,
   showPlaytime: true,
   showLastBackup: true,
+  showInstallSize: true,
   showNewBadges: true,
 };
 
@@ -72,5 +74,6 @@ export const TILE_PREF_LABELS: Record<keyof TilePrefs, string> = {
   showLastPlayed: "Последний запуск",
   showPlaytime: "Время в игре",
   showLastBackup: "Последний бэкап",
+  showInstallSize: "Размер папки игры (диск, ГБ)",
   showNewBadges: "Бейджи NEW / «только сейв»",
 };

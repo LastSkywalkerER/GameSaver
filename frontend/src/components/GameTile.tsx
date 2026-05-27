@@ -1,8 +1,24 @@
 import clsx from "clsx";
 import type { GameView } from "../api";
-import { coverUrl, formatDuration, formatRelative } from "../api";
+import { coverUrl, formatBytes, formatDuration, formatRelative } from "../api";
 import { SourceBadge } from "./SourceBadge";
 import { useTilePrefs } from "../tilePrefs";
+
+/** Aggregate install dir sizes per drive letter. */
+function installsByDrive(view: GameView): { drive: string; bytes: number }[] {
+  const map = new Map<string, number>();
+  for (const i of view.installations) {
+    const b = i.installDirSizeBytes ?? 0;
+    if (b <= 0) continue;
+    const head = (i.rootPath || "").split(/[\\/]/)[0];
+    if (!head || head.length < 2 || head[1] !== ":") continue;
+    const drive = head.toUpperCase();
+    map.set(drive, (map.get(drive) ?? 0) + b);
+  }
+  return Array.from(map.entries())
+    .map(([drive, bytes]) => ({ drive, bytes }))
+    .sort((a, b) => b.bytes - a.bytes);
+}
 
 export function GameTile({
   view,
@@ -22,6 +38,7 @@ export function GameTile({
   const installOnly = hasInstall && !hasSave;
   // Snapshots come from the API ordered by created_at DESC, so [0] is newest.
   const lastBackupAt = hasBackup ? view.snapshots[0].createdAt : 0;
+  const drives = installsByDrive(view);
 
   return (
     <button
@@ -96,6 +113,15 @@ export function GameTile({
             ⛁ {formatRelative(lastBackupAt)}
           </span>
         ) : null}
+        {prefs.showInstallSize && drives.map((d) => (
+          <span
+            key={d.drive}
+            className="chip border-amber-700/50 bg-amber-900/60 text-amber-200 backdrop-blur-sm"
+            title={`Установлено на ${d.drive}\\ — занимает ${formatBytes(d.bytes)}`}
+          >
+            💾 {d.drive} {formatBytes(d.bytes)}
+          </span>
+        ))}
       </div>
 
       {/* Top-right: count chips (existing) */}

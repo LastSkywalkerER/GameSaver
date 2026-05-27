@@ -77,15 +77,17 @@ type PlaySession struct {
 }
 
 type Installation struct {
-	ID         string     `json:"id"`
-	GameID     string     `json:"gameId"`
-	Source     SourceKind `json:"source"`
-	SourceAppID string    `json:"sourceAppId,omitempty"`
-	RootPath   string     `json:"rootPath"`
-	ExePath    string     `json:"exePath"`
-	SizeBytes  int64      `json:"sizeBytes,omitempty"`
-	LastSeenAt int64      `json:"lastSeenAt"`
-	LaunchURI  string     `json:"launchUri,omitempty"`
+	ID                  string     `json:"id"`
+	GameID              string     `json:"gameId"`
+	Source              SourceKind `json:"source"`
+	SourceAppID         string     `json:"sourceAppId,omitempty"`
+	RootPath            string     `json:"rootPath"`
+	ExePath             string     `json:"exePath"`
+	SizeBytes           int64      `json:"sizeBytes,omitempty"`           // launch exe size (fast)
+	InstallDirSizeBytes int64      `json:"installDirSizeBytes,omitempty"` // recursive root size (lazy)
+	InstallDirSizeAt    int64      `json:"installDirSizeAt,omitempty"`    // last computed unix ts
+	LastSeenAt          int64      `json:"lastSeenAt"`
+	LaunchURI           string     `json:"launchUri,omitempty"`
 }
 
 type SaveLocation struct {

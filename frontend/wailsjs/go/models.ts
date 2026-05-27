@@ -188,6 +188,8 @@ export namespace domain {
 	    rootPath: string;
 	    exePath: string;
 	    sizeBytes?: number;
+	    installDirSizeBytes?: number;
+	    installDirSizeAt?: number;
 	    lastSeenAt: number;
 	    launchUri?: string;
 	
@@ -204,6 +206,8 @@ export namespace domain {
 	        this.rootPath = source["rootPath"];
 	        this.exePath = source["exePath"];
 	        this.sizeBytes = source["sizeBytes"];
+	        this.installDirSizeBytes = source["installDirSizeBytes"];
+	        this.installDirSizeAt = source["installDirSizeAt"];
 	        this.lastSeenAt = source["lastSeenAt"];
 	        this.launchUri = source["launchUri"];
 	    }

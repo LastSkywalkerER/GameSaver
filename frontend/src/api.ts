@@ -48,7 +48,9 @@ export interface Installation {
   sourceAppId?: string;
   rootPath: string;
   exePath: string;
-  sizeBytes?: number;
+  sizeBytes?: number;             // exe size
+  installDirSizeBytes?: number;   // recursive install-root size (lazy)
+  installDirSizeAt?: number;      // unix ts of last measurement
   lastSeenAt: number;
   launchUri?: string;
 }
