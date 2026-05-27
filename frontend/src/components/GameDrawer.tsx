@@ -4,6 +4,7 @@ import { SourceBadge } from "./SourceBadge";
 import { useT } from "../i18n";
 import { ManifestPickerDialog } from "./ManifestPicker";
 import { DeepScanDialog } from "./DeepScanDialog";
+import { confirmModal } from "./Modal";
 
 export function GameDrawer({
   view,
@@ -55,7 +56,12 @@ export function GameDrawer({
     } finally { setBusy(null); }
   }
   async function doRestore(snapID: string) {
-    if (!confirm("Восстановить сейв? Текущее состояние будет автоматически забэкаплено перед перезаписью.")) return;
+    const ok = await confirmModal({
+      title: "Восстановить сейв?",
+      body: "Текущее состояние будет автоматически забэкаплено перед перезаписью.",
+      confirmLabel: "Восстановить",
+    });
+    if (!ok) return;
     setBusy("restore");
     try {
       await api.RestoreSnapshot(snapID, true);
@@ -63,7 +69,13 @@ export function GameDrawer({
     } finally { setBusy(null); }
   }
   async function doDeleteSnap(snapID: string) {
-    if (!confirm("Удалить снэпшот навсегда?")) return;
+    const ok = await confirmModal({
+      title: "Удалить снэпшот навсегда?",
+      body: "Архив будет стёрт с диска без возможности восстановления.",
+      confirmLabel: "Удалить",
+      variant: "danger",
+    });
+    if (!ok) return;
     setBusy("delete");
     try {
       await api.DeleteSnapshot(snapID);
@@ -71,7 +83,12 @@ export function GameDrawer({
     } finally { setBusy(null); }
   }
   async function doRemoveSave(locID: string) {
-    if (!confirm("Открепить эту папку сейва от игры? Файлы на диске не трогаются.")) return;
+    const ok = await confirmModal({
+      title: "Открепить папку сейва?",
+      body: "Папка отвяжется от этой игры в базе. Файлы на диске не трогаются.",
+      confirmLabel: "Открепить",
+    });
+    if (!ok) return;
     setBusy("rmloc");
     try {
       await api.RemoveSaveLocation(locID);

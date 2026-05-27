@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type AppConfig } from "../api";
 import { setLanguage, useT } from "../i18n";
 import { TILE_PREF_LABELS, setTilePref, useTilePrefs, type TilePrefs } from "../tilePrefs";
+import { confirmModal } from "../components/Modal";
 
 type ShellStatus = {
   watchdogPresent: boolean;
@@ -35,18 +36,21 @@ export function SettingsPage() {
   }
 
   async function enableShellMode() {
-    const ok = window.confirm(
-      "Включить режим оболочки?\n\n" +
-      "• После следующего входа в Windows загрузится ТОЛЬКО GameSaver — без " +
-      "панели задач, меню Пуск, иконок рабочего стола и системного трея.\n" +
-      "• Системный трей перестанет работать (он живёт на Explorer).\n" +
-      "• Если GameSaver упадёт несколько раз подряд, watchdog сам отключит " +
-      "режим и вернёт Explorer.\n" +
-      "• Аварийный выход: Ctrl+Alt+Shift+F12 в любой момент.\n" +
-      "• Также можно выйти из режима кнопкой ниже без перезагрузки.\n\n" +
-      "При первом включении watchdog (~2 МБ) скачается с GitHub Releases " +
-      "в %LOCALAPPDATA%\\GameSaver\\bin\\."
-    );
+    const ok = await confirmModal({
+      title: "Включить режим оболочки?",
+      variant: "danger",
+      confirmLabel: "Включить",
+      body: (
+        <ul className="list-disc space-y-1 pl-5">
+          <li>После следующего входа в Windows загрузится ТОЛЬКО GameSaver — без панели задач, меню Пуск, иконок рабочего стола и системного трея.</li>
+          <li>Системный трей перестанет работать (он живёт на Explorer).</li>
+          <li>Если GameSaver упадёт несколько раз подряд, watchdog сам отключит режим и вернёт Explorer.</li>
+          <li>Аварийный выход: <kbd className="rounded border border-border bg-card px-1">Ctrl+Alt+Shift+F12</kbd> в любой момент.</li>
+          <li>Также можно выйти из режима кнопкой в Настройках без перезагрузки.</li>
+          <li className="pt-1 text-muted">При первом включении watchdog (~2 МБ) скачается с GitHub Releases в <code className="rounded bg-card px-1">%LOCALAPPDATA%\GameSaver\bin\</code>.</li>
+        </ul>
+      ),
+    });
     if (!ok) return;
     setShellBusy(true);
     try {
