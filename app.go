@@ -43,9 +43,10 @@ type App struct {
 	bk      *backup.Engine
 	match   *match.Service
 	launch  *launcher.Service
-	updater  *updater.Updater
-	watcher  *watcher.Service
-	playtime *playtime.Service
+	updater    *updater.Updater
+	watcher    *watcher.Service
+	playtime   *playtime.Service
+	controller *controller.Service
 
 	scanMu sync.Mutex
 }
@@ -130,10 +131,21 @@ func (a *App) Startup(ctx context.Context) {
 	// XInput poller — emits controller:state/button/nav so the UI can show
 	// a 🎮 chip and drive d-pad menu navigation. Cheap when no controller
 	// connected (one syscall per 20 ms returning ERROR_DEVICE_NOT_CONNECTED).
-	go func() {
-		emit := func(ev string, payload any) { wailsruntime.EventsEmit(a.ctx, ev, payload) }
-		controller.New(emit).Run(a.ctx)
-	}()
+	// We keep the service handle on App so IsControllerConnected() can
+	// report the live state to UIs that mount after the initial connect
+	// event has already fired (otherwise they'd be stuck on "no pad").
+	a.controller = controller.New(func(ev string, payload any) {
+		wailsruntime.EventsEmit(a.ctx, ev, payload)
+	})
+	go a.controller.Run(a.ctx)
+
+	// Monitor hot-plug watcher — emits "display:changed" when the user
+	// plugs / unplugs / re-arranges displays at runtime. Shell-mode UI
+	// re-opens the monitor picker on this event so the user can re-pick
+	// without restarting / re-logging.
+	go display.Watch(a.ctx, func(ev string, payload any) {
+		wailsruntime.EventsEmit(a.ctx, ev, payload)
+	})
 
 	slog.Info("startup complete", "version", AppVersion)
 }
@@ -676,6 +688,16 @@ func (a *App) QuitApp() {
 		return
 	}
 	wailsruntime.Quit(a.ctx)
+}
+
+// IsControllerConnected reports the live XInput connection state so the
+// frontend can render the correct chip immediately on mount, even if the
+// initial "controller:state" event fired before EventsOn was subscribed.
+func (a *App) IsControllerConnected() bool {
+	if a.controller == nil {
+		return false
+	}
+	return a.controller.IsConnected()
 }
 
 // ===== Display / monitor management (shell-mode use) =====

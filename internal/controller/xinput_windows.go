@@ -12,6 +12,7 @@ package controller
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -76,13 +77,21 @@ const errSuccess = 0
 
 // Service drives an XInput polling loop and emits UI events via the supplied
 // emit callback (which is typically a thin wrapper around wailsruntime.EventsEmit).
+// Also exposes the latest connected state so the UI can query it on mount —
+// otherwise a frontend that subscribes via EventsOn *after* the initial
+// connect event has fired ends up stuck on "no pad" until the controller
+// disconnects and reconnects.
 type Service struct {
-	emit func(string, any)
+	emit      func(string, any)
+	connected atomic.Bool
 }
 
 func New(emit func(string, any)) *Service {
 	return &Service{emit: emit}
 }
+
+// IsConnected returns the most-recent poll result.
+func (s *Service) IsConnected() bool { return s.connected.Load() }
 
 // Run blocks until ctx is cancelled. Polls XInput user-index 0 (first
 // connected controller) and emits three event types:
@@ -112,7 +121,6 @@ func (s *Service) Run(ctx context.Context) {
 	defer ticker.Stop()
 
 	var (
-		connected   bool
 		prevButtons uint16
 		navDir      string
 		navStarted  time.Time
@@ -127,15 +135,16 @@ func (s *Service) Run(ctx context.Context) {
 			var st state
 			ret, _, _ := procGetState.Call(0, uintptr(unsafe.Pointer(&st)))
 
+			connected := s.connected.Load()
 			if ret != errSuccess {
 				if connected {
-					connected = false
+					s.connected.Store(false)
 					s.emit("controller:state", map[string]any{"connected": false})
 				}
 				continue
 			}
 			if !connected {
-				connected = true
+				s.connected.Store(true)
 				s.emit("controller:state", map[string]any{"connected": true})
 				// Suppress button events on the first frame so a held button
 				// from before connect doesn't fire spuriously.

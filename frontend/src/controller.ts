@@ -7,7 +7,7 @@
 //   controller:nav    {dir: "up|down|left|right"}            (auto-repeat)
 
 import { useEffect, useState } from "react";
-import { EventsOn } from "./api";
+import { api, EventsOn } from "./api";
 
 export type NavDir = "up" | "down" | "left" | "right";
 export type Button = "a" | "b" | "x" | "y" | "start" | "back" | "lb" | "rb";
@@ -45,6 +45,22 @@ export function useControllerConnected(): boolean {
   useEffect(() => {
     const fn = (v: boolean) => setC(v);
     stateSubs.add(fn);
+    // Pull the current state from the backend on mount. The XInput poller
+    // emits "controller:state" only on connect/disconnect *transitions*,
+    // and the very first event (the one that says "yes, pad is connected
+    // right now") fires immediately at app startup — typically before any
+    // frontend code has subscribed via EventsOn. Without this call the
+    // chip stays stuck on "no pad" until the user replugs the controller.
+    (api as any).IsControllerConnected?.()
+      .then((v: boolean) => {
+        if (v !== connected) {
+          connected = v;
+          stateSubs.forEach((s) => s(v));
+        } else {
+          setC(v);
+        }
+      })
+      .catch(() => {});
     return () => { stateSubs.delete(fn); };
   }, []);
   return c;

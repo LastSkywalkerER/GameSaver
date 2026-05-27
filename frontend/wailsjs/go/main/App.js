@@ -70,6 +70,10 @@ export function HideGame(arg1, arg2) {
   return window['go']['main']['App']['HideGame'](arg1, arg2);
 }
 
+export function IsControllerConnected() {
+  return window['go']['main']['App']['IsControllerConnected']();
+}
+
 export function IsWatcherEnabled() {
   return window['go']['main']['App']['IsWatcherEnabled']();
 }

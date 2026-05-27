@@ -11,12 +11,15 @@
 package display
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -279,6 +282,48 @@ func RestoreSaved() error {
 	// Backup applied — remove it so a future MakeSole captures fresh state.
 	_ = os.Remove(backupPath())
 	return nil
+}
+
+// Watch polls List() at a low frequency and emits "display:changed" via the
+// supplied emit callback whenever the topology changes (count of monitors
+// or any monitor's ID/resolution/position changes). Cheap — five seconds
+// between polls and List() takes a millisecond. We avoid hooking
+// WM_DISPLAYCHANGE because Wails doesn't expose the window's WndProc and
+// adding a sidecar message window for one event isn't worth the cost.
+func Watch(ctx context.Context, emit func(string, any)) {
+	var prev string
+	tick := time.NewTicker(5 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			ms, err := List()
+			if err != nil {
+				continue
+			}
+			fp := fingerprint(ms)
+			if prev == "" {
+				// Establish baseline on first tick — don't emit a spurious
+				// "changed" the moment the watcher starts up.
+				prev = fp
+				continue
+			}
+			if fp != prev {
+				prev = fp
+				emit("display:changed", ms)
+			}
+		}
+	}
+}
+
+func fingerprint(ms []Monitor) string {
+	parts := make([]string, len(ms))
+	for i, m := range ms {
+		parts[i] = fmt.Sprintf("%s|%dx%d@%d,%d", m.ID, m.Width, m.Height, m.PositionX, m.PositionY)
+	}
+	return strings.Join(parts, ";")
 }
 
 // ─── Backup persistence ────────────────────────────────────────────────

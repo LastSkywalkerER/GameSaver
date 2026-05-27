@@ -44,6 +44,8 @@ export function GetShellModeStatus():Promise<main.ShellModeStatus>;
 
 export function HideGame(arg1:string,arg2:boolean):Promise<void>;
 
+export function IsControllerConnected():Promise<boolean>;
+
 export function IsWatcherEnabled():Promise<boolean>;
 
 export function LaunchGame(arg1:string,arg2:string):Promise<void>;

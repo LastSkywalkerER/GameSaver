@@ -11,7 +11,7 @@
 //   B                          close overlay  +  playBack()
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type GameView } from "../../api";
+import { api, EventsOn, type GameView } from "../../api";
 import { useControllerButton, useControllerConnected, useControllerNav } from "../../controller";
 import { playBack, playMove, playSelect } from "../../sound";
 import { GameDrawer } from "../GameDrawer";
@@ -55,24 +55,45 @@ export function ShellApp({
   // silently — they only see the picker once unless they explicitly clear
   // it. If only 1 monitor is attached we skip entirely.
   const [monitorsToPick, setMonitorsToPick] = useState<Monitor[] | null>(null);
+
+  // Initial check at mount + re-check on every hot-plug ("display:changed").
+  // Logic: if there's a remembered choice AND it's still in the active list,
+  // silently re-apply (typical case: power-on, single-monitor steady state).
+  // Otherwise, surface the picker so the user can choose.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const mons: any = await api.ListMonitors();
-        if (cancelled || !Array.isArray(mons) || mons.length < 2) return;
-        const remembered = (() => { try { return localStorage.getItem("gs:soleMonitorId") || ""; } catch { return ""; } })();
-        if (remembered && mons.some((m: Monitor) => m.id === remembered)) {
-          // Silent re-apply on logon so the user lands single-screen.
-          try { await api.MakeSoleMonitor(remembered); } catch (e) { console.warn("re-apply monitor failed", e); }
-          return;
-        }
-        setMonitorsToPick(mons as Monitor[]);
-      } catch (e) {
-        console.warn("ListMonitors failed", e);
+
+    async function evaluate(mons: Monitor[]) {
+      if (cancelled) return;
+      if (!Array.isArray(mons) || mons.length < 2) {
+        setMonitorsToPick(null);
+        return;
       }
+      const remembered = (() => { try { return localStorage.getItem("gs:soleMonitorId") || ""; } catch { return ""; } })();
+      if (remembered && mons.some((m) => m.id === remembered)) {
+        // Re-apply silently — user already picked this, no need to ask again.
+        try { await api.MakeSoleMonitor(remembered); } catch (e) { console.warn("re-apply monitor failed", e); }
+        setMonitorsToPick(null);
+        return;
+      }
+      // Either no remembered choice, or it's gone (e.g. the monitor was
+      // unplugged) — reopen the picker.
+      setMonitorsToPick(mons);
+    }
+
+    (async () => {
+      try { const mons: any = await api.ListMonitors(); await evaluate(mons as Monitor[]); }
+      catch (e) { console.warn("ListMonitors failed", e); }
     })();
-    return () => { cancelled = true; };
+
+    const off = EventsOn("display:changed", (payload: any) => {
+      // payload is the new monitor list — saves us another round-trip.
+      evaluate(payload as Monitor[]);
+    });
+    return () => {
+      cancelled = true;
+      try { (off as any)?.(); } catch {}
+    };
   }, []);
 
   // Keep activeIdx in range when the list shrinks (e.g. a hidden flag flips).

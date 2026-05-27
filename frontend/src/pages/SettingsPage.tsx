@@ -3,6 +3,16 @@ import { api, type AppConfig } from "../api";
 import { setLanguage, useT } from "../i18n";
 import { TILE_PREF_LABELS, setTilePref, useTilePrefs, type TilePrefs } from "../tilePrefs";
 import { confirmModal } from "../components/Modal";
+import {
+  SOUND_PACK_LABELS,
+  getSoundPack,
+  playBack,
+  playMove,
+  playSelect,
+  setSoundPack,
+  subscribeSoundPack,
+  type SoundPack,
+} from "../sound";
 
 type ShellStatus = {
   watchdogPresent: boolean;
@@ -17,6 +27,8 @@ export function SettingsPage() {
   const [reconciling, setReconciling] = useState(false);
   const [shell, setShell] = useState<ShellStatus | null>(null);
   const [shellBusy, setShellBusy] = useState(false);
+  const [soundPack, setSoundPackState] = useState<SoundPack>(() => getSoundPack());
+  useEffect(() => subscribeSoundPack(setSoundPackState), []);
   const tilePrefs = useTilePrefs();
 
   useEffect(() => {
@@ -299,6 +311,34 @@ export function SettingsPage() {
             Тянет latest release из github.com/LastSkywalkerER/GameSaver
           </span>
         </div>
+      </section>
+
+      <section className="card p-4">
+        <div className="text-xs uppercase tracking-wide text-muted">Звук навигации</div>
+        <p className="mt-2 text-xs text-muted">
+          Используется в shell-режиме на каждом движении карусели / запуске
+          игры. Звуки генерируются на лету (Web Audio API) — никаких файлов.
+        </p>
+        <div className="mt-3 space-y-2">
+          {(Object.keys(SOUND_PACK_LABELS) as SoundPack[]).map((p) => (
+            <label key={p} className="flex items-center gap-2 text-sm text-gray-200">
+              <input
+                type="radio"
+                name="soundPack"
+                checked={soundPack === p}
+                onChange={() => { setSoundPack(p); if (p !== "off") playSelect(); }}
+              />
+              {SOUND_PACK_LABELS[p]}
+            </label>
+          ))}
+        </div>
+        {soundPack !== "off" && (
+          <div className="mt-3 flex gap-2">
+            <button className="btn" onClick={playMove}>▶ Move</button>
+            <button className="btn" onClick={playSelect}>▶ Select</button>
+            <button className="btn" onClick={playBack}>▶ Back</button>
+          </div>
+        )}
       </section>
 
       <section className="card p-4">
