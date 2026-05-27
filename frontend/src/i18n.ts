@@ -128,7 +128,25 @@ const en: Dict = {
 
 const DICTS: Record<string, Dict> = { ru, en };
 
-let current: string = "ru";
+// Default to the system language if we recognise it; otherwise English.
+// This runs before any backend round-trip — once the backend's stored
+// language arrives (only set if the user explicitly picked one), App.tsx
+// calls setLanguage() to override.
+function detectSystemLanguage(): string {
+  try {
+    const langs: string[] = [
+      ...(navigator.languages ?? []),
+      navigator.language ?? "",
+    ];
+    for (const l of langs) {
+      const head = (l ?? "").toLowerCase().split("-")[0];
+      if (head === "ru" || head === "en") return head;
+    }
+  } catch {}
+  return "en";
+}
+
+let current: string = detectSystemLanguage();
 const listeners = new Set<() => void>();
 
 export function setLanguage(lang: string) {

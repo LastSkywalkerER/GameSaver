@@ -7,8 +7,6 @@ export function TopBar({
   onOpenBackups,
   searchValue,
   onSearchChange,
-  filter,
-  onFilterChange,
   sortBy,
   onSortByChange,
 }: {
@@ -18,8 +16,6 @@ export function TopBar({
   onOpenBackups: () => void;
   searchValue: string;
   onSearchChange: (v: string) => void;
-  filter: string;
-  onFilterChange: (v: string) => void;
   sortBy: string;
   onSortByChange: (v: string) => void;
 }) {
@@ -44,12 +40,6 @@ export function TopBar({
         value={searchValue}
         onChange={(e) => onSearchChange(e.target.value)}
       />
-      <select className="input" value={filter} onChange={(e) => onFilterChange(e.target.value)}>
-        <option value="all">{t("filter.all")}</option>
-        <option value="withSaves">{t("filter.withSaves")}</option>
-        <option value="withBackups">{t("filter.withBackups")}</option>
-        <option value="withoutBackups">{t("filter.withoutBackups")}</option>
-      </select>
       <select
         className="input"
         value={sortBy}

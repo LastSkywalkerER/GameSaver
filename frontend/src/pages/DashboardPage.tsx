@@ -8,14 +8,12 @@ export function DashboardPage({
   games,
   onOpen,
   query,
-  filter,
   sortBy,
   scanned,
 }: {
   games: GameView[];
   onOpen: (g: GameView) => void;
   query: string;
-  filter: string;
   sortBy: string;
   scanned: boolean;
 }) {
@@ -24,9 +22,6 @@ export function DashboardPage({
     const fil = games.filter((g) => {
       if (g.game.hidden) return false;
       if (query && !g.game.name.toLowerCase().includes(query.toLowerCase())) return false;
-      if (filter === "withSaves" && g.saveLocations.length === 0) return false;
-      if (filter === "withBackups" && g.snapshots.length === 0) return false;
-      if (filter === "withoutBackups" && g.snapshots.length > 0) return false;
       return true;
     });
     const arr = [...fil];
@@ -49,7 +44,7 @@ export function DashboardPage({
         arr.sort((a, b) => a.game.name.toLowerCase().localeCompare(b.game.name.toLowerCase()));
     }
     return arr;
-  }, [games, query, filter, sortBy]);
+  }, [games, query, sortBy]);
 
   // ── Controller navigation ──────────────────────────────────────────────
   // Roving-focus model: only one tile in the grid is keyboard-focusable

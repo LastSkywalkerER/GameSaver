@@ -33,8 +33,11 @@ const (
 
 func defaultConfig() *Config {
 	return &Config{
-		BackupRoot:        defaultBackup,
-		Language:          "ru",
+		BackupRoot: defaultBackup,
+		// Empty language means "no user choice yet" — frontend picks from
+		// navigator.language. Becomes "ru"/"en" the first time the user
+		// touches the Language toggle in Settings.
+		Language:          "",
 		Theme:             "dark",
 		WatcherEnabled:    false,
 		WatcherDebounceMs: 10 * 60 * 1000,

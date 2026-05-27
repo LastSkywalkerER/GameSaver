@@ -6,7 +6,6 @@ import { Toaster } from "./components/Toaster";
 import { GameDrawer } from "./components/GameDrawer";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { DashboardPage } from "./pages/DashboardPage";
-import { LibraryPage } from "./pages/LibraryPage";
 import { BackupsPage } from "./pages/BackupsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { setLanguage, useT } from "./i18n";
@@ -19,7 +18,6 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
   const [opened, setOpened] = useState<GameView | null>(null);
   const [phase, setPhase] = useState<string>("");
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
@@ -119,7 +117,7 @@ export default function App() {
 
   // Controller global actions: Start cycles top-level pages, B closes drawer.
   // Per-page navigation (d-pad + A) is handled inside the relevant page.
-  const pages: Page[] = ["dashboard", "library", "backups", "settings"];
+  const pages: Page[] = ["dashboard", "backups", "settings"];
   useControllerButton((btn) => {
     if (btn === "b" && opened) {
       setOpened(null);
@@ -142,7 +140,7 @@ export default function App() {
         {update && update.available && (
           <UpdateBanner info={update} onDismiss={() => setUpdate(null)} />
         )}
-        {(page === "dashboard" || page === "library") && (
+        {page === "dashboard" && (
           <TopBar
             scanning={scanning}
             onScan={onScan}
@@ -150,8 +148,6 @@ export default function App() {
             onOpenBackups={onOpenBackups}
             searchValue={query}
             onSearchChange={setQuery}
-            filter={filter}
-            onFilterChange={setFilter}
             sortBy={sortBy}
             onSortByChange={setSortBy}
           />
@@ -167,12 +163,10 @@ export default function App() {
               games={games}
               onOpen={setOpened}
               query={query}
-              filter={filter}
               sortBy={sortBy}
               scanned={scanned || totalCount > 0}
             />
           )}
-          {page === "library" && <LibraryPage games={games} onOpen={setOpened} />}
           {page === "backups" && <BackupsPage games={games} />}
           {page === "settings" && <SettingsPage />}
         </div>
