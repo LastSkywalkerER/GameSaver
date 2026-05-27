@@ -86,6 +86,8 @@ export namespace domain {
 	    hidden: boolean;
 	    createdAt: number;
 	    updatedAt: number;
+	    lastPlayedAt?: number;
+	    totalPlaySeconds?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Game(source);
@@ -106,6 +108,8 @@ export namespace domain {
 	        this.hidden = source["hidden"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
+	        this.lastPlayedAt = source["lastPlayedAt"];
+	        this.totalPlaySeconds = source["totalPlaySeconds"];
 	    }
 	}
 	export class Snapshot {
@@ -241,6 +245,30 @@ export namespace domain {
 		}
 	}
 	
+	export class PlaySession {
+	    id: string;
+	    gameId: string;
+	    installationId?: string;
+	    startedAt: number;
+	    endedAt?: number;
+	    durationSeconds: number;
+	    source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlaySession(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.gameId = source["gameId"];
+	        this.installationId = source["installationId"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	        this.durationSeconds = source["durationSeconds"];
+	        this.source = source["source"];
+	    }
+	}
 	
 
 }

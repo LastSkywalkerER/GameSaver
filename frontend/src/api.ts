@@ -37,6 +37,8 @@ export interface Game {
   genres?: string;
   releaseYear?: number;
   hidden?: boolean;
+  lastPlayedAt?: number;     // unix seconds; 0 = never
+  totalPlaySeconds?: number; // lifetime total
 }
 
 export interface Installation {
@@ -129,6 +131,40 @@ export function formatBytes(n?: number): string {
 export function formatDate(ts?: number): string {
   if (!ts) return "";
   return new Date(ts * 1000).toLocaleString();
+}
+
+// formatDuration renders seconds as "2h 35m" / "12m 30s" / "47s".
+export function formatDuration(seconds?: number): string {
+  if (!seconds || seconds <= 0) return "0";
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+// formatRelative renders "5 минут назад" / "3 дня назад" etc. Empty if !ts.
+export function formatRelative(ts?: number): string {
+  if (!ts) return "";
+  const diff = Math.floor(Date.now() / 1000 - ts);
+  if (diff < 60) return "только что";
+  if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
+  if (diff < 86400 * 30) return `${Math.floor(diff / 86400)} дн назад`;
+  if (diff < 86400 * 365) return `${Math.floor(diff / 86400 / 30)} мес назад`;
+  return `${Math.floor(diff / 86400 / 365)} лет назад`;
+}
+
+export interface PlaySession {
+  id: string;
+  gameId: string;
+  installationId?: string;
+  startedAt: number;
+  endedAt?: number;
+  durationSeconds: number;
+  source: string;
 }
 
 export interface ManifestSearchResult {

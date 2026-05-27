@@ -20,6 +20,7 @@ import (
 	"GameSaver/internal/launcher"
 	"GameSaver/internal/match"
 	"GameSaver/internal/meta"
+	"GameSaver/internal/playtime"
 	"GameSaver/internal/scan/pipeline"
 	"GameSaver/internal/storage/sqlite"
 	"GameSaver/internal/tray"
@@ -37,8 +38,9 @@ type App struct {
 	bk      *backup.Engine
 	match   *match.Service
 	launch  *launcher.Service
-	updater *updater.Updater
-	watcher *watcher.Service
+	updater  *updater.Updater
+	watcher  *watcher.Service
+	playtime *playtime.Service
 
 	scanMu sync.Mutex
 }
@@ -65,6 +67,8 @@ func (a *App) Startup(ctx context.Context) {
 	a.launch = launcher.New(db)
 	a.updater = updater.New(AppVersion)
 	a.watcher = watcher.New(a.cfg, a.db, a.bk)
+	a.playtime = playtime.New(a.db)
+	a.playtime.Start(ctx)
 
 	// Clean up the previous binary that minio/selfupdate leaves behind as a
 	// .<name>.old rollback file. We're now running the new exe, so the old
@@ -134,6 +138,9 @@ func (a *App) backgroundUpdateCheck() {
 }
 
 func (a *App) Shutdown(_ context.Context) {
+	if a.playtime != nil {
+		a.playtime.Stop()
+	}
 	if a.watcher != nil {
 		a.watcher.Stop()
 	}
@@ -141,6 +148,11 @@ func (a *App) Shutdown(_ context.Context) {
 	if a.db != nil {
 		_ = a.db.Close()
 	}
+}
+
+// ListPlaySessions returns recent play sessions for a game (newest first).
+func (a *App) ListPlaySessions(gameID string, limit int) ([]*domain.PlaySession, error) {
+	return a.db.ListSessions(gameID, limit)
 }
 
 // ===== Config =====

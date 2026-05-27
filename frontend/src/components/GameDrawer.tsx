@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, coverUrl, formatBytes, formatDate, type GameView, type ManifestSearchResult } from "../api";
+import { api, coverUrl, formatBytes, formatDate, formatDuration, formatRelative, type GameView, type ManifestSearchResult } from "../api";
 import { SourceBadge } from "./SourceBadge";
 import { useT } from "../i18n";
 import { ManifestPickerDialog } from "./ManifestPicker";
@@ -119,6 +119,16 @@ export function GameDrawer({
               ))}
               {view.game.steamAppId ? (
                 <span className="chip">AppID {view.game.steamAppId}</span>
+              ) : null}
+              {view.game.lastPlayedAt ? (
+                <span className="chip" title={"Last played: " + formatDate(view.game.lastPlayedAt)}>
+                  ▶ {formatRelative(view.game.lastPlayedAt)}
+                </span>
+              ) : null}
+              {view.game.totalPlaySeconds && view.game.totalPlaySeconds > 0 ? (
+                <span className="chip" title="Сумма по всем сессиям">
+                  ⏱ {formatDuration(view.game.totalPlaySeconds)}
+                </span>
               ) : null}
             </div>
           </div>

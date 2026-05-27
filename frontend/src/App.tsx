@@ -22,6 +22,7 @@ export default function App() {
   const [opened, setOpened] = useState<GameView | null>(null);
   const [phase, setPhase] = useState<string>("");
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [sortBy, setSortBy] = useState<string>("name");
 
   async function refresh() {
     try {
@@ -120,6 +121,8 @@ export default function App() {
             onSearchChange={setQuery}
             filter={filter}
             onFilterChange={setFilter}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
           />
         )}
         {phase && (
@@ -134,6 +137,7 @@ export default function App() {
               onOpen={setOpened}
               query={query}
               filter={filter}
+              sortBy={sortBy}
               scanned={scanned || totalCount > 0}
             />
           )}

@@ -17,7 +17,9 @@ var migrations = []string{
 		release_year INTEGER,
 		hidden INTEGER NOT NULL DEFAULT 0,
 		created_at INTEGER NOT NULL,
-		updated_at INTEGER NOT NULL
+		updated_at INTEGER NOT NULL,
+		last_played_at INTEGER NOT NULL DEFAULT 0,
+		total_play_seconds INTEGER NOT NULL DEFAULT 0
 	);`,
 	`CREATE INDEX IF NOT EXISTS idx_games_name ON games(name);`,
 	`CREATE INDEX IF NOT EXISTS idx_games_appid ON games(steam_app_id);`,
@@ -85,6 +87,27 @@ var migrations = []string{
 		manifest_key TEXT,
 		updated_at INTEGER NOT NULL
 	);`,
+
+	// play_sessions records each detected game run for playtime stats and
+	// "recently played" sorting. ended_at is NULL while a session is in flight.
+	`CREATE TABLE IF NOT EXISTS play_sessions (
+		id TEXT PRIMARY KEY,
+		game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+		installation_id TEXT,
+		started_at INTEGER NOT NULL,
+		ended_at INTEGER,
+		duration_seconds INTEGER NOT NULL DEFAULT 0,
+		source TEXT NOT NULL DEFAULT 'auto'
+	);`,
+	`CREATE INDEX IF NOT EXISTS idx_sessions_game ON play_sessions(game_id, started_at DESC);`,
+}
+
+// extraColumns is run AFTER the main statements to retrofit columns onto an
+// existing DB whose `games` table predates them. Each entry is added only if
+// missing — safe to keep here forever.
+var extraColumns = []struct{ table, col, def string }{
+	{"games", "last_played_at", "INTEGER NOT NULL DEFAULT 0"},
+	{"games", "total_play_seconds", "INTEGER NOT NULL DEFAULT 0"},
 }
 
 func applyMigrations(db *sql.DB) error {
@@ -93,5 +116,33 @@ func applyMigrations(db *sql.DB) error {
 			return err
 		}
 	}
+	for _, c := range extraColumns {
+		if err := addColumnIfMissing(db, c.table, c.col, c.def); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// addColumnIfMissing performs an idempotent ALTER TABLE ADD COLUMN.
+func addColumnIfMissing(db *sql.DB, table, col, def string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == col {
+			return nil
+		}
+	}
+	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + col + " " + def)
+	return err
 }

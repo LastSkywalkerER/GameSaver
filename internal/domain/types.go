@@ -48,19 +48,32 @@ const (
 )
 
 type Game struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	IGDBID      int64  `json:"igdbId,omitempty"`
-	SteamAppID  int64  `json:"steamAppId,omitempty"`
-	CoverPath   string `json:"coverPath,omitempty"`
-	HeroPath    string `json:"heroPath,omitempty"`
-	IconPath    string `json:"iconPath,omitempty"`
-	Genres      string `json:"genres,omitempty"`
-	ReleaseYear int    `json:"releaseYear,omitempty"`
-	Hidden      bool   `json:"hidden"`
-	CreatedAt   int64  `json:"createdAt"`
-	UpdatedAt   int64  `json:"updatedAt"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Slug             string `json:"slug"`
+	IGDBID           int64  `json:"igdbId,omitempty"`
+	SteamAppID       int64  `json:"steamAppId,omitempty"`
+	CoverPath        string `json:"coverPath,omitempty"`
+	HeroPath         string `json:"heroPath,omitempty"`
+	IconPath         string `json:"iconPath,omitempty"`
+	Genres           string `json:"genres,omitempty"`
+	ReleaseYear      int    `json:"releaseYear,omitempty"`
+	Hidden           bool   `json:"hidden"`
+	CreatedAt        int64  `json:"createdAt"`
+	UpdatedAt        int64  `json:"updatedAt"`
+	LastPlayedAt     int64  `json:"lastPlayedAt,omitempty"`
+	TotalPlaySeconds int64  `json:"totalPlaySeconds,omitempty"`
+}
+
+// PlaySession is a single detected game run.
+type PlaySession struct {
+	ID              string `json:"id"`
+	GameID          string `json:"gameId"`
+	InstallationID  string `json:"installationId,omitempty"`
+	StartedAt       int64  `json:"startedAt"`
+	EndedAt         int64  `json:"endedAt,omitempty"`
+	DurationSeconds int64  `json:"durationSeconds"`
+	Source          string `json:"source"`
 }
 
 type Installation struct {

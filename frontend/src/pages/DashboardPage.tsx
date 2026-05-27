@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { GameView } from "../api";
 import { GameTile } from "../components/GameTile";
 import { useT } from "../i18n";
@@ -7,23 +8,45 @@ export function DashboardPage({
   onOpen,
   query,
   filter,
+  sortBy,
   scanned,
 }: {
   games: GameView[];
   onOpen: (g: GameView) => void;
   query: string;
   filter: string;
+  sortBy: string;
   scanned: boolean;
 }) {
   const t = useT();
-  const filtered = games.filter((g) => {
-    if (g.game.hidden) return false;
-    if (query && !g.game.name.toLowerCase().includes(query.toLowerCase())) return false;
-    if (filter === "withSaves" && g.saveLocations.length === 0) return false;
-    if (filter === "withBackups" && g.snapshots.length === 0) return false;
-    if (filter === "withoutBackups" && g.snapshots.length > 0) return false;
-    return true;
-  });
+  const filtered = useMemo(() => {
+    const fil = games.filter((g) => {
+      if (g.game.hidden) return false;
+      if (query && !g.game.name.toLowerCase().includes(query.toLowerCase())) return false;
+      if (filter === "withSaves" && g.saveLocations.length === 0) return false;
+      if (filter === "withBackups" && g.snapshots.length === 0) return false;
+      if (filter === "withoutBackups" && g.snapshots.length > 0) return false;
+      return true;
+    });
+    const arr = [...fil];
+    switch (sortBy) {
+      case "recent":
+        arr.sort((a, b) => (b.game.lastPlayedAt ?? 0) - (a.game.lastPlayedAt ?? 0));
+        break;
+      case "playtime":
+        arr.sort((a, b) => (b.game.totalPlaySeconds ?? 0) - (a.game.totalPlaySeconds ?? 0));
+        break;
+      case "saveSize": {
+        const sz = (g: GameView) => g.saveLocations.reduce((s, l) => s + (l.sizeBytes ?? 0), 0);
+        arr.sort((a, b) => sz(b) - sz(a));
+        break;
+      }
+      case "name":
+      default:
+        arr.sort((a, b) => a.game.name.toLowerCase().localeCompare(b.game.name.toLowerCase()));
+    }
+    return arr;
+  }, [games, query, filter, sortBy]);
 
   if (!scanned && games.length === 0) {
     return <div className="p-10 text-center text-muted">{t("scan.never")}</div>;

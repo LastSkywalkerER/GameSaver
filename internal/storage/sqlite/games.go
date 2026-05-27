@@ -8,6 +8,8 @@ import (
 )
 
 // UpsertGame inserts or updates a Game by ID, preserving created_at on update.
+// Playtime fields (last_played_at, total_play_seconds) are kept as-is on
+// conflict — only the playtime package updates them.
 func (s *Store) UpsertGame(g *domain.Game) error {
 	now := time.Now().Unix()
 	if g.CreatedAt == 0 {
@@ -15,8 +17,8 @@ func (s *Store) UpsertGame(g *domain.Game) error {
 	}
 	g.UpdatedAt = now
 	_, err := s.DB.Exec(`
-		INSERT INTO games (id,name,slug,igdb_id,steam_app_id,cover_path,hero_path,icon_path,genres,release_year,hidden,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+		INSERT INTO games (id,name,slug,igdb_id,steam_app_id,cover_path,hero_path,icon_path,genres,release_year,hidden,created_at,updated_at,last_played_at,total_play_seconds)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
 			slug=excluded.slug,
@@ -29,14 +31,17 @@ func (s *Store) UpsertGame(g *domain.Game) error {
 			release_year=COALESCE(NULLIF(excluded.release_year,0), games.release_year),
 			hidden=excluded.hidden,
 			updated_at=excluded.updated_at
-	`, g.ID, g.Name, g.Slug, g.IGDBID, g.SteamAppID, g.CoverPath, g.HeroPath, g.IconPath, g.Genres, g.ReleaseYear, boolToInt(g.Hidden), g.CreatedAt, g.UpdatedAt)
+	`, g.ID, g.Name, g.Slug, g.IGDBID, g.SteamAppID, g.CoverPath, g.HeroPath, g.IconPath, g.Genres, g.ReleaseYear, boolToInt(g.Hidden), g.CreatedAt, g.UpdatedAt, g.LastPlayedAt, g.TotalPlaySeconds)
 	return err
 }
 
-func (s *Store) GetGame(id string) (*domain.Game, error) {
-	row := s.DB.QueryRow(`SELECT id,name,slug,COALESCE(igdb_id,0),COALESCE(steam_app_id,0),
+const gameSelectCols = `id,name,slug,COALESCE(igdb_id,0),COALESCE(steam_app_id,0),
 		COALESCE(cover_path,''),COALESCE(hero_path,''),COALESCE(icon_path,''),
-		COALESCE(genres,''),COALESCE(release_year,0),hidden,created_at,updated_at FROM games WHERE id=?`, id)
+		COALESCE(genres,''),COALESCE(release_year,0),hidden,created_at,updated_at,
+		COALESCE(last_played_at,0),COALESCE(total_play_seconds,0)`
+
+func (s *Store) GetGame(id string) (*domain.Game, error) {
+	row := s.DB.QueryRow(`SELECT `+gameSelectCols+` FROM games WHERE id=?`, id)
 	g, err := scanGame(row)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -46,9 +51,7 @@ func (s *Store) GetGame(id string) (*domain.Game, error) {
 
 // FindGameBySteamAppID returns the game with the given Steam AppID (or ErrNotFound).
 func (s *Store) FindGameBySteamAppID(appID int64) (*domain.Game, error) {
-	row := s.DB.QueryRow(`SELECT id,name,slug,COALESCE(igdb_id,0),COALESCE(steam_app_id,0),
-		COALESCE(cover_path,''),COALESCE(hero_path,''),COALESCE(icon_path,''),
-		COALESCE(genres,''),COALESCE(release_year,0),hidden,created_at,updated_at FROM games WHERE steam_app_id=? LIMIT 1`, appID)
+	row := s.DB.QueryRow(`SELECT `+gameSelectCols+` FROM games WHERE steam_app_id=? LIMIT 1`, appID)
 	g, err := scanGame(row)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -58,9 +61,7 @@ func (s *Store) FindGameBySteamAppID(appID int64) (*domain.Game, error) {
 
 // FindGameBySlug returns a Game with the given slug.
 func (s *Store) FindGameBySlug(slug string) (*domain.Game, error) {
-	row := s.DB.QueryRow(`SELECT id,name,slug,COALESCE(igdb_id,0),COALESCE(steam_app_id,0),
-		COALESCE(cover_path,''),COALESCE(hero_path,''),COALESCE(icon_path,''),
-		COALESCE(genres,''),COALESCE(release_year,0),hidden,created_at,updated_at FROM games WHERE slug=? LIMIT 1`, slug)
+	row := s.DB.QueryRow(`SELECT `+gameSelectCols+` FROM games WHERE slug=? LIMIT 1`, slug)
 	g, err := scanGame(row)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -69,9 +70,7 @@ func (s *Store) FindGameBySlug(slug string) (*domain.Game, error) {
 }
 
 func (s *Store) ListGames() ([]*domain.Game, error) {
-	rows, err := s.DB.Query(`SELECT id,name,slug,COALESCE(igdb_id,0),COALESCE(steam_app_id,0),
-		COALESCE(cover_path,''),COALESCE(hero_path,''),COALESCE(icon_path,''),
-		COALESCE(genres,''),COALESCE(release_year,0),hidden,created_at,updated_at FROM games ORDER BY name`)
+	rows, err := s.DB.Query(`SELECT ` + gameSelectCols + ` FROM games ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +102,27 @@ func (s *Store) UpdateGameCovers(id, cover, hero, icon string) error {
 	return err
 }
 
+// UpdateGamePlayStats bumps last_played_at and adds delta seconds to
+// total_play_seconds. Called by the playtime tracker at session end.
+func (s *Store) UpdateGamePlayStats(id string, lastPlayedAt, addSeconds int64) error {
+	_, err := s.DB.Exec(`UPDATE games SET
+		last_played_at=MAX(COALESCE(last_played_at,0), ?),
+		total_play_seconds=COALESCE(total_play_seconds,0) + ?,
+		updated_at=? WHERE id=?`,
+		lastPlayedAt, addSeconds, time.Now().Unix(), id)
+	return err
+}
+
+// MarkGamePlaying just bumps last_played_at — used when a session starts so
+// "Recently played" sort reflects active sessions immediately.
+func (s *Store) MarkGamePlaying(id string, ts int64) error {
+	_, err := s.DB.Exec(`UPDATE games SET
+		last_played_at=MAX(COALESCE(last_played_at,0), ?),
+		updated_at=? WHERE id=?`,
+		ts, time.Now().Unix(), id)
+	return err
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -110,7 +130,10 @@ type rowScanner interface {
 func scanGame(rs rowScanner) (*domain.Game, error) {
 	g := &domain.Game{}
 	var hidden int
-	if err := rs.Scan(&g.ID, &g.Name, &g.Slug, &g.IGDBID, &g.SteamAppID, &g.CoverPath, &g.HeroPath, &g.IconPath, &g.Genres, &g.ReleaseYear, &hidden, &g.CreatedAt, &g.UpdatedAt); err != nil {
+	if err := rs.Scan(&g.ID, &g.Name, &g.Slug, &g.IGDBID, &g.SteamAppID,
+		&g.CoverPath, &g.HeroPath, &g.IconPath,
+		&g.Genres, &g.ReleaseYear, &hidden, &g.CreatedAt, &g.UpdatedAt,
+		&g.LastPlayedAt, &g.TotalPlaySeconds); err != nil {
 		return nil, err
 	}
 	g.Hidden = hidden != 0

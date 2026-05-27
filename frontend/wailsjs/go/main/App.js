@@ -66,6 +66,10 @@ export function ListGames() {
   return window['go']['main']['App']['ListGames']();
 }
 
+export function ListPlaySessions(arg1, arg2) {
+  return window['go']['main']['App']['ListPlaySessions'](arg1, arg2);
+}
+
 export function OpenBackupFolder() {
   return window['go']['main']['App']['OpenBackupFolder']();
 }

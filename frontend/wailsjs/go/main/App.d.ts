@@ -40,6 +40,8 @@ export function LaunchGame(arg1:string,arg2:string):Promise<void>;
 
 export function ListGames():Promise<Array<domain.GameView>>;
 
+export function ListPlaySessions(arg1:string,arg2:number):Promise<Array<domain.PlaySession>>;
+
 export function OpenBackupFolder():Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;

@@ -9,6 +9,8 @@ export function TopBar({
   onSearchChange,
   filter,
   onFilterChange,
+  sortBy,
+  onSortByChange,
 }: {
   scanning: boolean;
   onScan: () => void;
@@ -18,6 +20,8 @@ export function TopBar({
   onSearchChange: (v: string) => void;
   filter: string;
   onFilterChange: (v: string) => void;
+  sortBy: string;
+  onSortByChange: (v: string) => void;
 }) {
   const t = useT();
   return (
@@ -45,6 +49,17 @@ export function TopBar({
         <option value="withSaves">{t("filter.withSaves")}</option>
         <option value="withBackups">{t("filter.withBackups")}</option>
         <option value="withoutBackups">{t("filter.withoutBackups")}</option>
+      </select>
+      <select
+        className="input"
+        value={sortBy}
+        onChange={(e) => onSortByChange(e.target.value)}
+        title="Сортировка плиток"
+      >
+        <option value="name">По имени</option>
+        <option value="recent">Недавно играл</option>
+        <option value="playtime">Больше играл</option>
+        <option value="saveSize">Размер сейвов</option>
       </select>
     </header>
   );
