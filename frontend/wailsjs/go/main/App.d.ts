@@ -56,6 +56,8 @@ export function ListMonitors():Promise<Array<display.Monitor>>;
 
 export function ListPlaySessions(arg1:string,arg2:number):Promise<Array<domain.PlaySession>>;
 
+export function LockWorkstation():Promise<void>;
+
 export function MakeSoleMonitor(arg1:string):Promise<void>;
 
 export function OpenAutoLoginConfigurator():Promise<void>;
@@ -105,6 +107,8 @@ export function ShowItemInFolder(arg1:string):Promise<void>;
 export function Shutdown(arg1:context.Context):Promise<void>;
 
 export function SkipUpdate(arg1:string):Promise<void>;
+
+export function SleepWorkstation():Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;
 

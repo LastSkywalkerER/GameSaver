@@ -24,6 +24,7 @@ import (
 	"GameSaver/internal/match"
 	"GameSaver/internal/meta"
 	"GameSaver/internal/playtime"
+	"GameSaver/internal/power"
 	"GameSaver/internal/scan/dirsize"
 	"GameSaver/internal/scan/pipeline"
 	"GameSaver/internal/shellmode"
@@ -748,6 +749,16 @@ func (a *App) GetAutoLoginStatus() (*AutoLoginStatus, error) {
 	}
 	return &AutoLoginStatus{CheckboxHidden: hidden}, nil
 }
+
+// ===== Power (shell-mode parking) =====
+
+// LockWorkstation bounces the user to the Windows lock screen — same
+// as Win+L. GameSaver keeps running in the background.
+func (a *App) LockWorkstation() error { return power.Lock() }
+
+// SleepWorkstation puts the PC into S3 standby. May hibernate instead
+// if "Hibernate after standby" is enabled in the user's power plan.
+func (a *App) SleepWorkstation() error { return power.Sleep() }
 
 // OpenWindowsSoundSettings opens the classic Sound control panel
 // (mmsys.cpl, "Playback" tab). We deliberately avoid the modern

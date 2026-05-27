@@ -94,6 +94,10 @@ export function ListPlaySessions(arg1, arg2) {
   return window['go']['main']['App']['ListPlaySessions'](arg1, arg2);
 }
 
+export function LockWorkstation() {
+  return window['go']['main']['App']['LockWorkstation']();
+}
+
 export function MakeSoleMonitor(arg1) {
   return window['go']['main']['App']['MakeSoleMonitor'](arg1);
 }
@@ -192,6 +196,10 @@ export function Shutdown(arg1) {
 
 export function SkipUpdate(arg1) {
   return window['go']['main']['App']['SkipUpdate'](arg1);
+}
+
+export function SleepWorkstation() {
+  return window['go']['main']['App']['SleepWorkstation']();
 }
 
 export function Startup(arg1) {

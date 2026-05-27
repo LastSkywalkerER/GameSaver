@@ -23,8 +23,9 @@ import { GameCarousel } from "./GameCarousel";
 import { HeroPanel } from "./HeroPanel";
 import { ShellBackground } from "./ShellBackground";
 import { MonitorPicker, type Monitor } from "./MonitorPicker";
+import { PowerMenu } from "./PowerMenu";
 
-type Overlay = "none" | "details" | "settings" | "backups";
+type Overlay = "none" | "details" | "settings" | "backups" | "power";
 
 export function ShellApp({
   games,
@@ -139,6 +140,11 @@ export function ShellApp({
     } else if (btn === "y" && active) {
       playSelect();
       setOverlay("details");
+    } else if (btn === "x") {
+      // X is the only otherwise-unused face button — bind it to the
+      // power menu so Lock/Sleep/Exit are reachable from controller.
+      playSelect();
+      setOverlay("power");
     } else if (btn === "start") {
       playSelect();
       setOverlay("settings");
@@ -241,6 +247,7 @@ export function ShellApp({
           <span className="hidden gap-4 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-gray-300 backdrop-blur-md sm:flex">
             <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">A</kbd> запустить</span>
             <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Y</kbd> подробнее</span>
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">X</kbd> питание</span>
             <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Start</kbd> настройки</span>
             <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Back</kbd> бэкапы</span>
           </span>
@@ -248,6 +255,7 @@ export function ShellApp({
       </div>
 
       <CornerIcons
+        onPower={() => { playSelect(); setOverlay("power"); }}
         onSettings={() => { playSelect(); setOverlay("settings"); }}
         onBackups={() => { playSelect(); setOverlay("backups"); }}
         onExit={async () => {
@@ -302,6 +310,17 @@ export function ShellApp({
         <MonitorPicker
           monitors={monitorsToPick}
           onDone={() => setMonitorsToPick(null)}
+        />
+      )}
+
+      {overlay === "power" && (
+        <PowerMenu
+          onClose={() => setOverlay("none")}
+          onExit={async () => {
+            try { await api.RestoreMonitorConfig(); } catch (e) { console.warn("restore monitors", e); }
+            try { localStorage.removeItem("gs:soleMonitorId"); } catch {}
+            api.QuitApp();
+          }}
         />
       )}
     </div>
