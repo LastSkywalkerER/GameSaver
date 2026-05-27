@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, type AppConfig } from "../api";
 import { setLanguage, useT } from "../i18n";
+import { TILE_PREF_LABELS, setTilePref, useTilePrefs, type TilePrefs } from "../tilePrefs";
 
 export function SettingsPage() {
   const t = useT();
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [key, setKey] = useState("");
   const [reconciling, setReconciling] = useState(false);
+  const tilePrefs = useTilePrefs();
 
   useEffect(() => {
     api.GetConfig().then((c: any) => {
@@ -193,6 +195,23 @@ export function SettingsPage() {
           При запущенной игре авто-бэкап откладывается (файлы могут быть открыты).
           Включается также из иконки в трее (правой кнопкой → Auto-backup).
         </p>
+      </section>
+
+      <section className="card p-4">
+        <div className="text-xs uppercase tracking-wide text-muted">Содержимое плиток</div>
+        <p className="mt-1 text-xs text-muted">Что отображать на карточке игры в дашборде:</p>
+        <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {(Object.keys(TILE_PREF_LABELS) as (keyof TilePrefs)[]).map((k) => (
+            <label key={k} className="flex items-center gap-2 text-sm text-gray-200">
+              <input
+                type="checkbox"
+                checked={tilePrefs[k]}
+                onChange={(e) => setTilePref(k, e.target.checked)}
+              />
+              {TILE_PREF_LABELS[k]}
+            </label>
+          ))}
+        </div>
       </section>
 
       <section className="card p-4">

@@ -1,7 +1,8 @@
 import clsx from "clsx";
 import type { GameView } from "../api";
-import { coverUrl } from "../api";
+import { coverUrl, formatDuration, formatRelative } from "../api";
 import { SourceBadge } from "./SourceBadge";
+import { useTilePrefs } from "../tilePrefs";
 
 export function GameTile({
   view,
@@ -10,17 +11,18 @@ export function GameTile({
   view: GameView;
   onClick: () => void;
 }) {
+  const prefs = useTilePrefs();
   const g = view.game;
   const cover = coverUrl(g.coverPath);
   const sources = Array.from(new Set(view.installations.map((i) => i.source)));
   const hasInstall = view.installations.length > 0;
   const hasSave = view.saveLocations.length > 0;
   const hasBackup = view.snapshots.length > 0;
-  // Visual hints:
-  //  - save-only (no install): grayscale + "только сейв" tag
-  //  - install-only (no save): "NEW" tag suggesting "ready to play, no save yet"
   const saveOnly = !hasInstall && hasSave;
   const installOnly = hasInstall && !hasSave;
+  // Snapshots come from the API ordered by created_at DESC, so [0] is newest.
+  const lastBackupAt = hasBackup ? view.snapshots[0].createdAt : 0;
+
   return (
     <button
       onClick={onClick}
@@ -51,35 +53,67 @@ export function GameTile({
           <span className="text-sm font-semibold leading-snug text-gray-200">{g.name}</span>
         </div>
       )}
+
+      {/* Bottom gradient + name + sources/status pills */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3">
         <div className="text-sm font-semibold leading-tight text-white drop-shadow">{g.name}</div>
         <div className="mt-1 flex flex-wrap gap-1">
-          {sources.map((s) => (
+          {prefs.showSources && sources.map((s) => (
             <SourceBadge key={s} source={s} />
           ))}
-          {saveOnly && (
+          {prefs.showNewBadges && saveOnly && (
             <span className="chip border-zinc-500 bg-zinc-800/80 text-zinc-200">только сейв</span>
           )}
-          {installOnly && (
+          {prefs.showNewBadges && installOnly && (
             <span className="chip border-amber-500/60 bg-amber-900/40 text-amber-200">NEW</span>
           )}
         </div>
       </div>
+
+      {/* Top-left: "metadata" chips with dates / durations */}
+      <div className="absolute left-2 top-2 flex max-w-[60%] flex-col items-start gap-1">
+        {prefs.showLastPlayed && g.lastPlayedAt ? (
+          <span
+            className="chip border-emerald-700/50 bg-emerald-900/60 text-emerald-200 backdrop-blur-sm"
+            title={"Последний запуск: " + new Date((g.lastPlayedAt ?? 0) * 1000).toLocaleString()}
+          >
+            ▶ {formatRelative(g.lastPlayedAt)}
+          </span>
+        ) : null}
+        {prefs.showPlaytime && g.totalPlaySeconds && g.totalPlaySeconds > 0 ? (
+          <span
+            className="chip border-sky-700/50 bg-sky-900/60 text-sky-200 backdrop-blur-sm"
+            title="Сумма по всем сессиям"
+          >
+            ⏱ {formatDuration(g.totalPlaySeconds)}
+          </span>
+        ) : null}
+        {prefs.showLastBackup && lastBackupAt ? (
+          <span
+            className="chip border-violet-700/50 bg-violet-900/60 text-violet-200 backdrop-blur-sm"
+            title={"Последний бэкап: " + new Date(lastBackupAt * 1000).toLocaleString()}
+          >
+            ⛁ {formatRelative(lastBackupAt)}
+          </span>
+        ) : null}
+      </div>
+
+      {/* Top-right: count chips (existing) */}
       <div className="absolute right-2 top-2 flex flex-col gap-1">
-        {hasSave ? (
-          <span className="chip border-emerald-700/50 bg-emerald-900/50 text-emerald-300">
-            ✓ {view.saveLocations.length}
-          </span>
-        ) : (
-          <span className="chip border-zinc-700 bg-zinc-900/50 text-zinc-400">
-            —
-          </span>
-        )}
-        {hasBackup && (
+        {prefs.showSaveCount ? (
+          hasSave ? (
+            <span className="chip border-emerald-700/50 bg-emerald-900/50 text-emerald-300">
+              ✓ {view.saveLocations.length}
+            </span>
+          ) : (
+            <span className="chip border-zinc-700 bg-zinc-900/50 text-zinc-400">—</span>
+          )
+        ) : null}
+        {prefs.showBackupCount && hasBackup ? (
           <span className="chip border-violet-700/50 bg-violet-900/50 text-violet-200">
             ⛁ {view.snapshots.length}
           </span>
-        )}
+        ) : null}
       </div>
     </button>
   );
