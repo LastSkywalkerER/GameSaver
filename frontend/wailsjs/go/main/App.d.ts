@@ -53,6 +53,8 @@ export function OpenBackupFolder():Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;
 
+export function QuitApp():Promise<void>;
+
 export function ReconcileBackups():Promise<backup.ReconcileResult>;
 
 export function RematchGame(arg1:string,arg2:string):Promise<void>;

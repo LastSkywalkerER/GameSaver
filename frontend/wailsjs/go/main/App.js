@@ -90,6 +90,10 @@ export function PickFolder(arg1) {
   return window['go']['main']['App']['PickFolder'](arg1);
 }
 
+export function QuitApp() {
+  return window['go']['main']['App']['QuitApp']();
+}
+
 export function ReconcileBackups() {
   return window['go']['main']['App']['ReconcileBackups']();
 }

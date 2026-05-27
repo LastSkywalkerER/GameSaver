@@ -63,12 +63,23 @@ func main() {
 		go tray.Run()
 	}
 
+	// In shell mode we want a frameless fullscreen window (no titlebar, no
+	// chrome — it IS the desktop). In normal mode keep the regular framed
+	// window with the OS chrome the user expects.
+	startState := options.Normal
+	if shellMode {
+		startState = options.Fullscreen
+	}
+
 	err = wails.Run(&options.App{
 		Title:            "GameSaver",
 		Width:            1280,
 		Height:           820,
 		MinWidth:         900,
 		MinHeight:        600,
+		Frameless:        shellMode,
+		Fullscreen:       shellMode,
+		WindowStartState: startState,
 		BackgroundColour: &options.RGBA{R: 17, G: 17, B: 23, A: 1},
 		AssetServer: &assetserver.Options{
 			Assets:  assets,

@@ -658,8 +658,20 @@ func (a *App) EnableShellMode() error {
 }
 
 // DisableShellMode clears the registry value. If we're currently running
-// under the watchdog, the user will need to restart for it to take effect
-// (we don't kill the watchdog from here — that would close the running app).
+// under the watchdog the UI is expected to follow up with QuitApp() — that
+// gives the user Explorer back immediately without needing to log out and
+// back in (watchdog exits on clean-exit and launches explorer.exe itself).
 func (a *App) DisableShellMode() error {
 	return shellmode.Disable()
+}
+
+// QuitApp triggers a clean Wails shutdown. Used by the "Exit shell mode"
+// button so the watchdog (which is our parent in shell mode) sees an exit
+// code of 0, declines to restart, and brings Explorer back up. Safe to
+// call in normal mode too — just quits the app like the tray "Quit" item.
+func (a *App) QuitApp() {
+	if a.ctx == nil {
+		return
+	}
+	wailsruntime.Quit(a.ctx)
 }

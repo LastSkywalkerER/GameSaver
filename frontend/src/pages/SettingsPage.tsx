@@ -68,6 +68,16 @@ export function SettingsPage() {
     setShellBusy(true);
     try {
       await api.DisableShellMode();
+      // If we're CURRENTLY running under the watchdog, also quit ourselves:
+      // watchdog sees exit 0, declines to restart, launches explorer.exe —
+      // user gets the desktop back without having to sign out. In normal
+      // mode (registry was set but we're under explorer, e.g. user enabled
+      // and disabled without re-logging) just refresh the toggle state.
+      if (shell?.runningAsShell) {
+        api.Toast("success", "Возвращаем Explorer…");
+        await api.QuitApp();
+        return; // we're about to die; UI cleanup happens on the next session
+      }
       api.Toast("success", "Shell mode выключен. Следующий вход вернёт обычный рабочий стол.");
       await refreshShellStatus();
     } catch (e) {
