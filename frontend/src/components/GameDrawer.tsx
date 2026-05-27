@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, coverUrl, formatBytes, formatDate, formatDuration, formatRelative, type GameView, type ManifestSearchResult } from "../api";
+import { api, coverUrl, formatBytes, formatDate, formatDuration, formatRelative, type GameView, type ManifestSearchResult, type PlaySession } from "../api";
 import { SourceBadge } from "./SourceBadge";
 import { useT } from "../i18n";
 import { ManifestPickerDialog } from "./ManifestPicker";
@@ -18,7 +18,18 @@ export function GameDrawer({
   const [busy, setBusy] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [showDeepScan, setShowDeepScan] = useState(false);
+  const [sessions, setSessions] = useState<PlaySession[]>([]);
   const hero = coverUrl(view.game.heroPath) ?? coverUrl(view.game.coverPath);
+
+  // Re-fetch sessions whenever the drawer opens a different game or the game
+  // view refreshes (e.g. after a backup).
+  useEffect(() => {
+    let cancelled = false;
+    api.ListPlaySessions(view.game.id, 50).then((s: any) => {
+      if (!cancelled) setSessions((s ?? []) as PlaySession[]);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [view.game.id, view.game.lastPlayedAt, view.game.totalPlaySeconds]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -203,6 +214,49 @@ export function GameDrawer({
                 </div>
               ))}
             </div>
+          </section>
+
+          {/* Play sessions */}
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">История запусков</h3>
+              {view.game.totalPlaySeconds && view.game.totalPlaySeconds > 0 ? (
+                <span className="text-xs text-muted">
+                  всего: <span className="text-gray-200">{formatDuration(view.game.totalPlaySeconds)}</span>
+                  {" · "}
+                  {sessions.length} сессий
+                </span>
+              ) : null}
+            </div>
+            {sessions.length === 0 ? (
+              <p className="text-sm text-muted">
+                Нет данных. Трекер опрашивает запущенные процессы каждые 30 сек — после первого запуска игры (полный цикл: запустил → закрыл) сессия появится здесь.
+              </p>
+            ) : (
+              <div className="grid gap-1.5">
+                {sessions.map((s) => {
+                  const active = !s.endedAt || s.endedAt === 0;
+                  return (
+                    <div key={s.id} className="card flex items-center gap-3 px-3 py-1.5 text-xs">
+                      <span className={"chip " + (active ? "border-emerald-700/50 bg-emerald-900/50 text-emerald-300" : "")}>
+                        {active ? "▶ играет сейчас" : s.source}
+                      </span>
+                      <span className="text-gray-200">{formatDate(s.startedAt)}</span>
+                      {!active && (
+                        <>
+                          <span className="text-muted">→</span>
+                          <span className="text-gray-300">{formatDate(s.endedAt)}</span>
+                        </>
+                      )}
+                      <div className="flex-1" />
+                      <span className="font-medium text-gray-100">
+                        {active ? formatDuration(Math.floor(Date.now() / 1000 - s.startedAt)) + " (идёт)" : formatDuration(s.durationSeconds)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           {/* Snapshots */}
