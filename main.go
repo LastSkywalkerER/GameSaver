@@ -66,8 +66,15 @@ func main() {
 		OnStartup:  func(ctx context.Context) { app.Startup(ctx) },
 		OnShutdown: func(ctx context.Context) { app.Shutdown(ctx) },
 		// Close button hides the window instead of killing the process —
-		// app keeps running in the tray (watcher etc. stay alive).
-		HideWindowOnClose: true,
+		// app keeps running in the tray (watcher etc. stay alive). We hook
+		// OnBeforeClose and call WindowHide ourselves rather than relying on
+		// HideWindowOnClose, because the latter routes through the full close
+		// path internally (visible as a 1–2 s freeze in WebView2 before the
+		// hide kicks in). Returning true cancels the actual close.
+		OnBeforeClose: func(ctx context.Context) bool {
+			wailsruntime.WindowHide(ctx)
+			return true
+		},
 		// Only one instance allowed — a second exec (e.g. user double-clicks
 		// the tray-resident exe again) hands off to the running instance and
 		// exits, otherwise we get duplicate playtime sessions, duplicate
