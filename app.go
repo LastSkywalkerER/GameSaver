@@ -126,10 +126,43 @@ func (a *App) Startup(ctx context.Context) {
 	slog.Info("startup complete", "version", AppVersion)
 }
 
-// backgroundUpdateCheck waits a few seconds, queries GitHub, then emits
-// "update:available" if a newer version exists that the user hasn't skipped.
+// backgroundUpdateCheck waits a short ramp-up time, queries GitHub, then
+// repeats every 30 minutes for the lifetime of the process. Each tick emits
+// "update:available" if a newer version exists that the user hasn't
+// permanently skipped. Respects the AutoCheckUpdates toggle on every tick so
+// users can pause/resume it without restarting.
 func (a *App) backgroundUpdateCheck() {
-	time.Sleep(8 * time.Second)
+	// Initial delay so the UI is interactive before the first network call.
+	select {
+	case <-time.After(8 * time.Second):
+	case <-a.ctx.Done():
+		return
+	}
+	a.runUpdateCheck(false)
+
+	// Recurring tick. 30 min matches user expectation of "checks on its own
+	// every so often" without hammering GitHub.
+	t := time.NewTicker(30 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-t.C:
+			if !a.cfg.AutoCheckUpdates {
+				continue
+			}
+			a.runUpdateCheck(false)
+		}
+	}
+}
+
+// runUpdateCheck hits GitHub, persists the last-check timestamp, and emits
+// "update:available" if a newer (non-skipped) version exists. Shared by the
+// startup goroutine, the 30-min ticker, and the manual Settings button so all
+// three paths behave identically. `manual=true` bypasses the SkippedUpdateVer
+// gate because the user explicitly asked.
+func (a *App) runUpdateCheck(manual bool) {
 	if a.ctx == nil {
 		return
 	}
@@ -143,7 +176,7 @@ func (a *App) backgroundUpdateCheck() {
 	if !info.Available {
 		return
 	}
-	if a.cfg.SkippedUpdateVer != "" && a.cfg.SkippedUpdateVer == info.LatestVer {
+	if !manual && a.cfg.SkippedUpdateVer != "" && a.cfg.SkippedUpdateVer == info.LatestVer {
 		slog.Info("update available but skipped by user", "version", info.LatestVer)
 		return
 	}
@@ -397,6 +430,14 @@ func (a *App) CheckForUpdate() (*updater.UpdateInfo, error) {
 	}
 	a.cfg.LastUpdateCheckUnix = time.Now().Unix()
 	_ = config.Save(a.cfg)
+	// Mirror the background-check path: emit "update:available" so the banner
+	// actually shows up. The Settings button's "баннер появится сверху" toast
+	// was previously a lie because we only returned the info. The manual flag
+	// bypasses the SkippedUpdateVer gate — if the user clicked "Проверить
+	// сейчас" they want to see the banner even for a version they once skipped.
+	if info != nil && info.Available && a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "update:available", info)
+	}
 	return info, nil
 }
 
