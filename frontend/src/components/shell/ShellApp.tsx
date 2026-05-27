@@ -22,6 +22,7 @@ import { CornerIcons } from "./CornerIcons";
 import { GameCarousel } from "./GameCarousel";
 import { HeroPanel } from "./HeroPanel";
 import { ShellBackground } from "./ShellBackground";
+import { MonitorPicker, type Monitor } from "./MonitorPicker";
 
 type Overlay = "none" | "details" | "settings" | "backups";
 
@@ -47,6 +48,32 @@ export function ShellApp({
   const [activeIdx, setActiveIdx] = useState(0);
   const [overlay, setOverlay] = useState<Overlay>("none");
   const padOn = useControllerConnected();
+
+  // Monitor picker — on first ShellApp mount we ask the OS how many
+  // displays are attached. If 2+, we show the picker overlay. The user's
+  // previous choice (per gs:soleMonitorId in localStorage) is auto-applied
+  // silently — they only see the picker once unless they explicitly clear
+  // it. If only 1 monitor is attached we skip entirely.
+  const [monitorsToPick, setMonitorsToPick] = useState<Monitor[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const mons: any = await api.ListMonitors();
+        if (cancelled || !Array.isArray(mons) || mons.length < 2) return;
+        const remembered = (() => { try { return localStorage.getItem("gs:soleMonitorId") || ""; } catch { return ""; } })();
+        if (remembered && mons.some((m: Monitor) => m.id === remembered)) {
+          // Silent re-apply on logon so the user lands single-screen.
+          try { await api.MakeSoleMonitor(remembered); } catch (e) { console.warn("re-apply monitor failed", e); }
+          return;
+        }
+        setMonitorsToPick(mons as Monitor[]);
+      } catch (e) {
+        console.warn("ListMonitors failed", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Keep activeIdx in range when the list shrinks (e.g. a hidden flag flips).
   useEffect(() => {
@@ -196,7 +223,15 @@ export function ShellApp({
       <CornerIcons
         onSettings={() => { playSelect(); setOverlay("settings"); }}
         onBackups={() => { playSelect(); setOverlay("backups"); }}
-        onExit={() => { playBack(); api.QuitApp(); }}
+        onExit={async () => {
+          playBack();
+          // Bring the other monitors back before we hand control back to
+          // Explorer — otherwise the user logs in to a single-screen
+          // setup and has to fix it in Windows display settings.
+          try { await api.RestoreMonitorConfig(); } catch (e) { console.warn("restore monitors", e); }
+          try { localStorage.removeItem("gs:soleMonitorId"); } catch {}
+          api.QuitApp();
+        }}
       />
 
       <HeroPanel
@@ -235,6 +270,13 @@ export function ShellApp({
           <BackupsPage games={games} />
         </div>
       </Modal>
+
+      {monitorsToPick && (
+        <MonitorPicker
+          monitors={monitorsToPick}
+          onDone={() => setMonitorsToPick(null)}
+        />
+      )}
     </div>
   );
 }

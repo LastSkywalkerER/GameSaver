@@ -6,6 +6,7 @@ import {context} from '../models';
 import {match} from '../models';
 import {config} from '../models';
 import {main} from '../models';
+import {display} from '../models';
 import {backup} from '../models';
 import {pipeline} from '../models';
 
@@ -47,7 +48,11 @@ export function LaunchGame(arg1:string,arg2:string):Promise<void>;
 
 export function ListGames():Promise<Array<domain.GameView>>;
 
+export function ListMonitors():Promise<Array<display.Monitor>>;
+
 export function ListPlaySessions(arg1:string,arg2:number):Promise<Array<domain.PlaySession>>;
+
+export function MakeSoleMonitor(arg1:string):Promise<void>;
 
 export function OpenBackupFolder():Promise<void>;
 
@@ -62,6 +67,8 @@ export function RematchGame(arg1:string,arg2:string):Promise<void>;
 export function RemoveSaveLocation(arg1:string):Promise<void>;
 
 export function RestartApp():Promise<void>;
+
+export function RestoreMonitorConfig():Promise<void>;
 
 export function RestoreSnapshot(arg1:string,arg2:boolean):Promise<void>;
 

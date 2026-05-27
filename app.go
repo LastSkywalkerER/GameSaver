@@ -17,6 +17,7 @@ import (
 	"GameSaver/internal/backup"
 	"GameSaver/internal/config"
 	"GameSaver/internal/controller"
+	"GameSaver/internal/display"
 	"GameSaver/internal/domain"
 	"GameSaver/internal/launcher"
 	"GameSaver/internal/match"
@@ -674,4 +675,26 @@ func (a *App) QuitApp() {
 		return
 	}
 	wailsruntime.Quit(a.ctx)
+}
+
+// ===== Display / monitor management (shell-mode use) =====
+
+// ListMonitors returns the currently active monitors so the UI can let
+// the user pick which one to use in shell mode.
+func (a *App) ListMonitors() ([]display.Monitor, error) {
+	return display.List()
+}
+
+// MakeSoleMonitor disables every active display except the one whose ID
+// (e.g. `\\.\DISPLAY1`) matches. The previous configuration is snapshotted
+// to disk so RestoreMonitorConfig() can roll back at shell-mode exit.
+func (a *App) MakeSoleMonitor(id string) error {
+	return display.MakeSole(id)
+}
+
+// RestoreMonitorConfig undoes the last MakeSoleMonitor call. No-op if
+// nothing was saved (already restored, or shell mode never narrowed
+// displays in the first place).
+func (a *App) RestoreMonitorConfig() error {
+	return display.RestoreSaved()
 }

@@ -78,8 +78,16 @@ export function ListGames() {
   return window['go']['main']['App']['ListGames']();
 }
 
+export function ListMonitors() {
+  return window['go']['main']['App']['ListMonitors']();
+}
+
 export function ListPlaySessions(arg1, arg2) {
   return window['go']['main']['App']['ListPlaySessions'](arg1, arg2);
+}
+
+export function MakeSoleMonitor(arg1) {
+  return window['go']['main']['App']['MakeSoleMonitor'](arg1);
 }
 
 export function OpenBackupFolder() {
@@ -108,6 +116,10 @@ export function RemoveSaveLocation(arg1) {
 
 export function RestartApp() {
   return window['go']['main']['App']['RestartApp']();
+}
+
+export function RestoreMonitorConfig() {
+  return window['go']['main']['App']['RestoreMonitorConfig']();
 }
 
 export function RestoreSnapshot(arg1, arg2) {

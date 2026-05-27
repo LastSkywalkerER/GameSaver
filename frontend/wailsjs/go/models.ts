@@ -70,6 +70,37 @@ export namespace config {
 
 }
 
+export namespace display {
+	
+	export class Monitor {
+	    id: string;
+	    name: string;
+	    width: number;
+	    height: number;
+	    positionX: number;
+	    positionY: number;
+	    isPrimary: boolean;
+	    isEnabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Monitor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.positionX = source["positionX"];
+	        this.positionY = source["positionY"];
+	        this.isPrimary = source["isPrimary"];
+	        this.isEnabled = source["isEnabled"];
+	    }
+	}
+
+}
+
 export namespace domain {
 	
 	export class Game {
