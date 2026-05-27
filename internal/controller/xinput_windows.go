@@ -93,8 +93,11 @@ func New(emit func(string, any)) *Service {
 // IsConnected returns the most-recent poll result.
 func (s *Service) IsConnected() bool { return s.connected.Load() }
 
-// Run blocks until ctx is cancelled. Polls XInput user-index 0 (first
-// connected controller) and emits three event types:
+// Run blocks until ctx is cancelled. Polls XInput across ALL FOUR user
+// indices (Windows assigns connected controllers to slots 0–3 — usually
+// the first connected one lands at 0, but if another Bluetooth/XInput
+// device is also paired it can sit on 1+, in which case polling only
+// slot 0 misses it entirely). Emits three event types:
 //
 //	"controller:state"  {connected: bool}                       — on edge change
 //	"controller:button" {button: "a|b|x|y|start|back|lb|rb"}   — on press, no repeat
@@ -109,6 +112,7 @@ func (s *Service) Run(ctx context.Context) {
 		slog.Info("xinput not available, controller support disabled", "err", err)
 		return
 	}
+	slog.Info("xinput poller started")
 
 	const (
 		tick          = 20 * time.Millisecond // 50 Hz
@@ -116,6 +120,33 @@ func (s *Service) Run(ctx context.Context) {
 		repeatInitial = 350 * time.Millisecond
 		repeatPeriod  = 120 * time.Millisecond
 	)
+
+	// pollAny returns the first XInput slot that comes back with
+	// ERROR_SUCCESS, sticking with that slot until it disconnects. Trying
+	// every poll across 0–3 means a controller plugged in mid-session is
+	// picked up without restart, regardless of which slot Windows hands it.
+	activeSlot := uint32(0xFFFF) // sentinel: none yet
+	pollAny := func(out *state) (uint32, bool) {
+		// Prefer the slot we were already using to avoid a connect/disconnect
+		// flutter if two controllers are plugged in.
+		if activeSlot != 0xFFFF {
+			r, _, _ := procGetState.Call(uintptr(activeSlot), uintptr(unsafe.Pointer(out)))
+			if r == errSuccess {
+				return activeSlot, true
+			}
+		}
+		for i := uint32(0); i < 4; i++ {
+			if i == activeSlot {
+				continue
+			}
+			r, _, _ := procGetState.Call(uintptr(i), uintptr(unsafe.Pointer(out)))
+			if r == errSuccess {
+				slog.Info("controller detected", "slot", i)
+				return i, true
+			}
+		}
+		return 0xFFFF, false
+	}
 
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
@@ -133,16 +164,18 @@ func (s *Service) Run(ctx context.Context) {
 			return
 		case now := <-ticker.C:
 			var st state
-			ret, _, _ := procGetState.Call(0, uintptr(unsafe.Pointer(&st)))
+			slot, ok := pollAny(&st)
 
 			connected := s.connected.Load()
-			if ret != errSuccess {
+			if !ok {
 				if connected {
 					s.connected.Store(false)
+					activeSlot = 0xFFFF
 					s.emit("controller:state", map[string]any{"connected": false})
 				}
 				continue
 			}
+			activeSlot = slot
 			if !connected {
 				s.connected.Store(true)
 				s.emit("controller:state", map[string]any{"connected": true})
