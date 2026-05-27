@@ -21,7 +21,7 @@ export function HeroPanel({
 
   if (!game) {
     return (
-      <div className="absolute inset-x-0 top-0 flex h-[62vh] items-center justify-center text-xl text-gray-400">
+      <div className="absolute inset-x-0 top-0 flex h-[55vh] items-center justify-center text-xl text-gray-400">
         Игр пока нет — запусти скан в обычном режиме
       </div>
     );
@@ -32,7 +32,10 @@ export function HeroPanel({
   const hasBackup  = game.snapshots.length > 0;
 
   return (
-    <div className="absolute inset-x-0 top-0 flex h-[62vh] items-end overflow-hidden">
+    // Height intentionally shorter than carousel-top so there's breathing
+    // room between the hero's bottom and the carousel tiles — otherwise
+    // the edges line up and look like one solid cut.
+    <div className="absolute inset-x-0 top-0 flex h-[55vh] items-end overflow-hidden">
       {heroSrc && (
         <img
           key={g.id}
@@ -42,11 +45,15 @@ export function HeroPanel({
         />
       )}
       {/* Bottom-to-top + right-to-left dark gradient so text on the left
-          stays readable regardless of cover content. */}
+          stays readable regardless of cover content. The bottom-fade is
+          tall (40%) so the hero blends into the background well above
+          the carousel — no hard seam where the two halves meet. */}
       <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/50 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0b1e] via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0b1e] via-[#0a0b1e]/40 to-transparent" style={{ backgroundSize: "100% 100%" }} />
 
-      <div className="relative z-10 max-w-[55%] p-16 pb-12">
+      {/* pb-20 lifts content up so the Play button sits comfortably away
+          from the hero/carousel seam. */}
+      <div className="relative z-10 max-w-[55%] p-16 pb-20">
         <div className="mb-3 flex items-center gap-3 text-sm uppercase tracking-widest text-accent">
           {game.installations.map((i) => i.source).filter((v, i, a) => a.indexOf(v) === i).join(" · ")}
         </div>

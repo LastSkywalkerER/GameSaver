@@ -10,7 +10,7 @@
 //   Y                          open Details   +  playSelect()
 //   B                          close overlay  +  playBack()
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type GameView } from "../../api";
 import { useControllerButton, useControllerNav } from "../../controller";
 import { playBack, playMove, playSelect } from "../../sound";
@@ -54,22 +54,22 @@ export function ShellApp({
 
   const active = sorted[activeIdx] ?? null;
 
+  // Shared cursor mover — used by controller nav, keyboard arrows, and
+  // mouse wheel. Plays the move sound only when the cursor actually
+  // shifts (so holding ← at the leftmost tile doesn't tick endlessly).
+  const moveCursor = useCallback((delta: number) => {
+    setActiveIdx((i) => {
+      const next = Math.max(0, Math.min(sorted.length - 1, i + delta));
+      if (next !== i) playMove();
+      return next;
+    });
+  }, [sorted.length]);
+
   // ── Controller navigation ────────────────────────────────────────────
   useControllerNav((dir) => {
     if (overlay !== "none") return; // overlay has its own input (or none yet)
-    if (dir === "left") {
-      setActiveIdx((i) => {
-        const next = Math.max(0, i - 1);
-        if (next !== i) playMove();
-        return next;
-      });
-    } else if (dir === "right") {
-      setActiveIdx((i) => {
-        const next = Math.min(sorted.length - 1, i + 1);
-        if (next !== i) playMove();
-        return next;
-      });
-    }
+    if (dir === "left")  moveCursor(-1);
+    if (dir === "right") moveCursor(+1);
   });
 
   useControllerButton((btn) => {
@@ -93,6 +93,58 @@ export function ShellApp({
       setOverlay("backups");
     }
   });
+
+  // ── Keyboard navigation ─────────────────────────────────────────────
+  // Arrow keys mirror d-pad, Enter mirrors A, Escape mirrors B. Lets
+  // mouse-and-keyboard users drive the shell UI without a controller.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Don't hijack typing inside the Settings overlay's inputs etc.
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      if (overlay !== "none") {
+        if (e.key === "Escape") { e.preventDefault(); playBack(); setOverlay("none"); }
+        return;
+      }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); moveCursor(-1); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); moveCursor(+1); }
+      else if (e.key === "Enter" && active) { e.preventDefault(); doLaunch(active); }
+      else if (e.key === "Escape" || e.key.toLowerCase() === "i") {
+        // 'i' for "info" — mouse-keyboard counterpart of controller's Y.
+        if (e.key.toLowerCase() === "i" && active) {
+          e.preventDefault();
+          playSelect();
+          setOverlay("details");
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [overlay, active, moveCursor]);
+
+  // ── Mouse-wheel navigation ──────────────────────────────────────────
+  // One wheel notch (or one trackpad scroll-step) advances the carousel
+  // by one tile. Wheel events fire fast on trackpads — throttle to ~150 ms
+  // so a single swipe doesn't shoot past 5 games.
+  const wheelLockRef = useRef(0);
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (overlay !== "none") return;
+      const now = Date.now();
+      if (now - wheelLockRef.current < 150) return;
+      // deltaY > 0 = scroll down/forward → next tile.
+      // We also accept horizontal wheel (deltaX) for trackpads doing
+      // left/right scroll gestures.
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (d === 0) return;
+      wheelLockRef.current = now;
+      moveCursor(d > 0 ? +1 : -1);
+    };
+    window.addEventListener("wheel", onWheel, { passive: true });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [overlay, moveCursor]);
 
   async function doLaunch(g: GameView) {
     playSelect();
