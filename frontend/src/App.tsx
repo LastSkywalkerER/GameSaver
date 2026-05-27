@@ -25,7 +25,12 @@ export default function App() {
   // Dashboard sort persists across restarts via localStorage. Falls back to
   // "name" for first-time users / cleared storage.
   const [sortBy, setSortByState] = useState<string>(() => {
-    try { return localStorage.getItem("gs:sortBy") || "name"; } catch { return "name"; }
+    try {
+      const v = localStorage.getItem("gs:sortBy") || "name";
+      // v0.3.5: renamed "saveSize" → "installSize". Migrate stale values so
+      // returning users don't see a phantom-selected dropdown.
+      return v === "saveSize" ? "installSize" : v;
+    } catch { return "name"; }
   });
   const setSortBy = (v: string) => {
     setSortByState(v);

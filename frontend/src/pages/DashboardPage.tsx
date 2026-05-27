@@ -36,8 +36,10 @@ export function DashboardPage({
       case "playtime":
         arr.sort((a, b) => (b.game.totalPlaySeconds ?? 0) - (a.game.totalPlaySeconds ?? 0));
         break;
-      case "saveSize": {
-        const sz = (g: GameView) => g.saveLocations.reduce((s, l) => s + (l.sizeBytes ?? 0), 0);
+      case "installSize": {
+        // Sum measured install-root sizes across all installations. Games where
+        // the background walker hasn't reported yet sort to the bottom (sz=0).
+        const sz = (g: GameView) => g.installations.reduce((s, i) => s + (i.installDirSizeBytes ?? 0), 0);
         arr.sort((a, b) => sz(b) - sz(a));
         break;
       }

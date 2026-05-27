@@ -59,7 +59,7 @@ export function TopBar({
         <option value="name">По имени</option>
         <option value="recent">Недавно играл</option>
         <option value="playtime">Больше играл</option>
-        <option value="saveSize">Размер сейвов</option>
+        <option value="installSize">Размер папки игры</option>
       </select>
     </header>
   );
