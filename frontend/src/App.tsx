@@ -10,11 +10,17 @@ import { BackupsPage } from "./pages/BackupsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { setLanguage, useT } from "./i18n";
 import { useControllerButton } from "./controller";
+import { ShellApp } from "./components/shell/ShellApp";
 
 export default function App() {
   const t = useT();
   const [page, setPage] = useState<Page>("dashboard");
   const [games, setGames] = useState<GameView[]>([]);
+  // Are we currently running under gamesaver-watchdog.exe as the user
+  // shell? If yes we render the immersive ShellApp instead of the regular
+  // sidebar + topbar UI. Null = still polling backend; renders nothing
+  // for one frame to avoid a flash of the wrong UI.
+  const [shellMode, setShellMode] = useState<boolean | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [query, setQuery] = useState("");
@@ -45,6 +51,7 @@ export default function App() {
 
   useEffect(() => {
     api.GetConfig().then((c: any) => { if (c?.language) setLanguage(c.language); });
+    api.GetShellModeStatus().then((s: any) => setShellMode(!!s?.runningAsShell)).catch(() => setShellMode(false));
     refresh();
 
     const offProg = EventsOn("scan:progress", (p: any) => setPhase(p?.phase + (p?.name ? ": " + p.name : "")));
@@ -117,8 +124,11 @@ export default function App() {
 
   // Controller global actions: Start cycles top-level pages, B closes drawer.
   // Per-page navigation (d-pad + A) is handled inside the relevant page.
+  // In shell mode the entire desktop UI is replaced by ShellApp, which has
+  // its own controller bindings — short-circuit here to avoid double-handling.
   const pages: Page[] = ["dashboard", "backups", "settings"];
   useControllerButton((btn) => {
+    if (shellMode) return;
     if (btn === "b" && opened) {
       setOpened(null);
       return;
@@ -132,6 +142,20 @@ export default function App() {
   });
 
   const totalCount = games.length;
+
+  // Block the first frame until we know whether we're shell — otherwise the
+  // regular desktop UI flashes for ~50 ms before swapping out.
+  if (shellMode === null) {
+    return <div className="h-screen w-screen bg-bg" />;
+  }
+  if (shellMode) {
+    return (
+      <>
+        <ShellApp games={games} refresh={refresh} />
+        <Toaster />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen text-gray-100">
