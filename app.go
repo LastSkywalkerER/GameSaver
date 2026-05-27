@@ -22,7 +22,9 @@ import (
 	"GameSaver/internal/meta"
 	"GameSaver/internal/scan/pipeline"
 	"GameSaver/internal/storage/sqlite"
+	"GameSaver/internal/tray"
 	"GameSaver/internal/updater"
+	"GameSaver/internal/watcher"
 )
 
 // App is the Wails-bound facade. All exported methods become callable from the
@@ -36,9 +38,14 @@ type App struct {
 	match   *match.Service
 	launch  *launcher.Service
 	updater *updater.Updater
+	watcher *watcher.Service
 
 	scanMu sync.Mutex
 }
+
+// Context returns the Wails runtime context once Startup has fired.
+// Exposed so satellite goroutines (tray, watcher) can drive runtime events.
+func (a *App) Context() context.Context { return a.ctx }
 
 func NewApp(cfg *config.Config) *App {
 	return &App{cfg: cfg}
@@ -57,11 +64,19 @@ func (a *App) Startup(ctx context.Context) {
 	a.bk = backup.New(a.cfg, db)
 	a.launch = launcher.New(db)
 	a.updater = updater.New(AppVersion)
+	a.watcher = watcher.New(a.cfg, a.db, a.bk)
 
 	// Clean up the previous binary that minio/selfupdate leaves behind as a
 	// .<name>.old rollback file. We're now running the new exe, so the old
 	// one is safe to remove. Best-effort — never blocks startup.
 	cleanupOldExe()
+
+	// Auto-backup watcher: starts if user toggled it on (default false).
+	if a.cfg.WatcherEnabled {
+		if err := a.watcher.Start(ctx); err != nil {
+			slog.Warn("watcher start", "err", err)
+		}
+	}
 
 	// Sync DB with on-disk backups: re-import orphan snapshot zips into the
 	// snapshots table (and prune dead rows). Runs on every start; idempotent.
@@ -119,6 +134,10 @@ func (a *App) backgroundUpdateCheck() {
 }
 
 func (a *App) Shutdown(_ context.Context) {
+	if a.watcher != nil {
+		a.watcher.Stop()
+	}
+	tray.Quit()
 	if a.db != nil {
 		_ = a.db.Close()
 	}
@@ -378,6 +397,61 @@ func (a *App) SkipUpdate(version string) error {
 // SetAutoCheckUpdates toggles whether the startup pass hits GitHub.
 func (a *App) SetAutoCheckUpdates(enabled bool) error {
 	a.cfg.AutoCheckUpdates = enabled
+	return config.Save(a.cfg)
+}
+
+// ===== Watcher controls (used by Settings UI + tray) =====
+
+// IsWatcherEnabled reports the in-memory running state of the auto-backup watcher.
+func (a *App) IsWatcherEnabled() bool {
+	return a.watcher != nil && a.watcher.IsRunning()
+}
+
+// WatcherToggle starts or stops the watcher and persists the new state in
+// settings.json so it survives restarts. Used by both the tray menu checkbox
+// and the Settings page.
+func (a *App) WatcherToggle(enabled bool) error {
+	a.cfg.WatcherEnabled = enabled
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	if a.watcher == nil {
+		return nil
+	}
+	if enabled {
+		if err := a.watcher.Start(a.ctx); err != nil {
+			return err
+		}
+	} else {
+		a.watcher.Stop()
+	}
+	tray.SyncWatcherState(enabled)
+	return nil
+}
+
+// SetWatcherDebounceMinutes lets the UI tune how long of no-changes triggers
+// an auto-backup. Min 1 minute, max 24 hours. Persisted to settings.json.
+func (a *App) SetWatcherDebounceMinutes(minutes int) error {
+	if minutes < 1 {
+		minutes = 1
+	}
+	if minutes > 24*60 {
+		minutes = 24 * 60
+	}
+	a.cfg.WatcherDebounceMs = minutes * 60 * 1000
+	return config.Save(a.cfg)
+}
+
+// SetRetentionKeepN configures how many snapshots per save location the
+// backup engine keeps before pruning oldest. 0 = unlimited; clamps to 1..1000.
+func (a *App) SetRetentionKeepN(n int) error {
+	if n < 0 {
+		n = 0
+	}
+	if n > 1000 {
+		n = 1000
+	}
+	a.cfg.RetentionKeepN = n
 	return config.Save(a.cfg)
 }
 

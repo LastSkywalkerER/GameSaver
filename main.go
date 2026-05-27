@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	_ "embed"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,10 +17,17 @@ import (
 
 	"GameSaver/internal/config"
 	"GameSaver/internal/logging"
+	"GameSaver/internal/tray"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+// trayIcon is the PNG used both as the Windows tray-icon and (via Wails build)
+// as the source for build/windows/icon.ico.
+//
+//go:embed build/appicon.png
+var trayIcon []byte
 
 func main() {
 	cfg, err := config.Load()
@@ -35,20 +43,29 @@ func main() {
 
 	app := NewApp(cfg)
 
+	// Start tray on a background goroutine. On Windows the systray loop is
+	// happy off the main thread (macOS would require otherwise; we're Windows
+	// only). Tray "Open" / "Backup all" / "Watcher" / "Quit" all proxy back
+	// to App via the AppController interface.
+	tray.Init(trayIcon, app)
+	go tray.Run()
+
 	err = wails.Run(&options.App{
-		Title:             "GameSaver",
-		Width:             1280,
-		Height:            820,
-		MinWidth:          900,
-		MinHeight:         600,
-		BackgroundColour:  &options.RGBA{R: 17, G: 17, B: 23, A: 1},
+		Title:            "GameSaver",
+		Width:            1280,
+		Height:           820,
+		MinWidth:         900,
+		MinHeight:        600,
+		BackgroundColour: &options.RGBA{R: 17, G: 17, B: 23, A: 1},
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: coversHandler(cfg),
 		},
-		OnStartup:         func(ctx context.Context) { app.Startup(ctx) },
-		OnShutdown:        func(ctx context.Context) { app.Shutdown(ctx) },
-		HideWindowOnClose: false,
+		OnStartup:  func(ctx context.Context) { app.Startup(ctx) },
+		OnShutdown: func(ctx context.Context) { app.Shutdown(ctx) },
+		// Close button hides the window instead of killing the process —
+		// app keeps running in the tray (watcher etc. stay alive).
+		HideWindowOnClose: true,
 		Bind:              []interface{}{app},
 		Windows: &windows.Options{
 			WebviewIsTransparent:              false,
@@ -56,6 +73,7 @@ func main() {
 			DisableFramelessWindowDecorations: false,
 		},
 	})
+	tray.Quit()
 	if err != nil {
 		slog.Error("wails run", "err", err)
 		os.Exit(1)

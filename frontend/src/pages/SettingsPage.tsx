@@ -139,8 +139,60 @@ export function SettingsPage() {
 
       <section className="card p-4">
         <div className="text-xs uppercase tracking-wide text-muted">{t("settings.retention")}</div>
-        <div className="mt-1 text-sm text-gray-200">{cfg.retentionKeepN}</div>
-        <p className="mt-2 text-xs text-muted">Старые снэпшоты сверх лимита удаляются автоматически.</p>
+        <div className="mt-1 flex items-center gap-2">
+          <input
+            type="number"
+            min={0}
+            max={1000}
+            step={1}
+            className="input w-24"
+            value={cfg.retentionKeepN}
+            onChange={async (e) => {
+              const n = Math.max(0, Math.min(1000, parseInt(e.target.value || "0", 10)));
+              await api.SetRetentionKeepN(n);
+              setCfg({ ...cfg, retentionKeepN: n });
+            }}
+          />
+          <span className="text-xs text-muted">снэпшотов на одну папку сейва (0 = без лимита)</span>
+        </div>
+        <p className="mt-2 text-xs text-muted">Старые сверх лимита удаляются автоматически после каждого нового бэкапа.</p>
+      </section>
+
+      <section className="card p-4">
+        <div className="text-xs uppercase tracking-wide text-muted">Auto-backup (watcher)</div>
+        <label className="mt-2 flex items-center gap-2 text-sm text-gray-200">
+          <input
+            type="checkbox"
+            checked={cfg.watcherEnabled}
+            onChange={async (e) => {
+              const v = e.target.checked;
+              await api.WatcherToggle(v);
+              setCfg({ ...cfg, watcherEnabled: v });
+            }}
+          />
+          Следить за изменениями сейвов и автоматически бэкапить
+        </label>
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-sm text-gray-300">Бэкап через</span>
+          <input
+            type="number"
+            min={1}
+            max={1440}
+            step={1}
+            className="input w-20"
+            value={Math.max(1, Math.round((cfg.watcherDebounceMs || 600000) / 60000))}
+            onChange={async (e) => {
+              const m = Math.max(1, Math.min(1440, parseInt(e.target.value || "10", 10)));
+              await api.SetWatcherDebounceMinutes(m);
+              setCfg({ ...cfg, watcherDebounceMs: m * 60 * 1000 });
+            }}
+          />
+          <span className="text-sm text-gray-300">минут тишины после последнего изменения</span>
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          При запущенной игре авто-бэкап откладывается (файлы могут быть открыты).
+          Включается также из иконки в трее (правой кнопкой → Auto-backup).
+        </p>
       </section>
 
       <section className="card p-4">

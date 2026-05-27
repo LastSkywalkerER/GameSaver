@@ -30,6 +30,10 @@ export function ClearManifestOverride(arg1) {
   return window['go']['main']['App']['ClearManifestOverride'](arg1);
 }
 
+export function Context() {
+  return window['go']['main']['App']['Context']();
+}
+
 export function DeepScanGame(arg1) {
   return window['go']['main']['App']['DeepScanGame'](arg1);
 }
@@ -48,6 +52,10 @@ export function GetGame(arg1) {
 
 export function HideGame(arg1, arg2) {
   return window['go']['main']['App']['HideGame'](arg1, arg2);
+}
+
+export function IsWatcherEnabled() {
+  return window['go']['main']['App']['IsWatcherEnabled']();
 }
 
 export function LaunchGame(arg1, arg2) {
@@ -110,12 +118,20 @@ export function SetLanguage(arg1) {
   return window['go']['main']['App']['SetLanguage'](arg1);
 }
 
+export function SetRetentionKeepN(arg1) {
+  return window['go']['main']['App']['SetRetentionKeepN'](arg1);
+}
+
 export function SetSteamGridDBKey(arg1) {
   return window['go']['main']['App']['SetSteamGridDBKey'](arg1);
 }
 
 export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
+}
+
+export function SetWatcherDebounceMinutes(arg1) {
+  return window['go']['main']['App']['SetWatcherDebounceMinutes'](arg1);
 }
 
 export function ShowItemInFolder(arg1) {
@@ -136,4 +152,8 @@ export function Startup(arg1) {
 
 export function Toast(arg1, arg2) {
   return window['go']['main']['App']['Toast'](arg1, arg2);
+}
+
+export function WatcherToggle(arg1) {
+  return window['go']['main']['App']['WatcherToggle'](arg1);
 }
