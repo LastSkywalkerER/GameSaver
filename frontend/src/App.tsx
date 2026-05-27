@@ -22,7 +22,15 @@ export default function App() {
   const [opened, setOpened] = useState<GameView | null>(null);
   const [phase, setPhase] = useState<string>("");
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
-  const [sortBy, setSortBy] = useState<string>("name");
+  // Dashboard sort persists across restarts via localStorage. Falls back to
+  // "name" for first-time users / cleared storage.
+  const [sortBy, setSortByState] = useState<string>(() => {
+    try { return localStorage.getItem("gs:sortBy") || "name"; } catch { return "name"; }
+  });
+  const setSortBy = (v: string) => {
+    setSortByState(v);
+    try { localStorage.setItem("gs:sortBy", v); } catch {}
+  };
 
   async function refresh() {
     try {
