@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type GameView } from "../../api";
-import { useControllerButton, useControllerNav } from "../../controller";
+import { useControllerButton, useControllerConnected, useControllerNav } from "../../controller";
 import { playBack, playMove, playSelect } from "../../sound";
 import { GameDrawer } from "../GameDrawer";
 import { BackupsPage } from "../../pages/BackupsPage";
@@ -46,6 +46,7 @@ export function ShellApp({
 
   const [activeIdx, setActiveIdx] = useState(0);
   const [overlay, setOverlay] = useState<Overlay>("none");
+  const padOn = useControllerConnected();
 
   // Keep activeIdx in range when the list shrinks (e.g. a hidden flag flips).
   useEffect(() => {
@@ -163,6 +164,35 @@ export function ShellApp({
   return (
     <div className="fixed inset-0 overflow-hidden text-gray-100">
       <ShellBackground />
+
+      {/* Top-left: controller status + button hints. The hint row only
+          renders when a controller is connected — without one, hints are
+          irrelevant (keyboard hints would be wrong) and we keep the
+          corner clean. The 🎮 chip sits inside even when no controller
+          is detected so the user gets a clear "not connected" signal
+          rather than wondering why their pad doesn't work. */}
+      <div className="absolute left-6 top-6 z-20 flex items-center gap-3">
+        <span
+          className={
+            "flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm backdrop-blur-md transition " +
+            (padOn
+              ? "border-emerald-500/40 bg-emerald-900/40 text-emerald-200"
+              : "border-white/10 bg-white/5 text-gray-400")
+          }
+          title={padOn ? "Xbox-совместимый контроллер подключён" : "Контроллер не подключён — пользуйся клавой/мышью"}
+        >
+          🎮 {padOn ? "controller" : "no pad"}
+        </span>
+        {padOn && (
+          <span className="hidden gap-4 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-gray-300 backdrop-blur-md sm:flex">
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">A</kbd> запустить</span>
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Y</kbd> подробнее</span>
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Start</kbd> настройки</span>
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Back</kbd> бэкапы</span>
+          </span>
+        )}
+      </div>
+
       <CornerIcons
         onSettings={() => { playSelect(); setOverlay("settings"); }}
         onBackups={() => { playSelect(); setOverlay("backups"); }}
