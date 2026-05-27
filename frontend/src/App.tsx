@@ -81,6 +81,10 @@ export default function App() {
       setUpdate(info as UpdateInfo);
     });
     const offInstSize = EventsOn("inst:size", () => { refresh(); });
+    // Playtime tracker fires on every session start/end so tile chips
+    // (last-played, total time) refresh as games come and go — critical
+    // for long-lived shell-mode sessions where the user never closes the app.
+    const offPlay = EventsOn("playtime:changed", () => { refresh(); });
     const offReconcile = EventsOn("reconcile:done", (r: any) => {
       const created = (r?.createdGames ?? 0) + (r?.createdLocations ?? 0);
       const msg = `Бэкапы синхронизированы: импорт ${r?.importedSnapshots ?? 0}` +
@@ -90,7 +94,7 @@ export default function App() {
       refresh();
     });
     return () => {
-      try { (offProg as any)?.(); (offSrc as any)?.(); (offGame as any)?.(); (offMatch as any)?.(); (offMeta as any)?.(); (offDone as any)?.(); (offRevProg as any)?.(); (offRevDone as any)?.(); (offReconcile as any)?.(); (offUpdate as any)?.(); (offInstSize as any)?.(); } catch {}
+      try { (offProg as any)?.(); (offSrc as any)?.(); (offGame as any)?.(); (offMatch as any)?.(); (offMeta as any)?.(); (offDone as any)?.(); (offRevProg as any)?.(); (offRevDone as any)?.(); (offReconcile as any)?.(); (offUpdate as any)?.(); (offInstSize as any)?.(); (offPlay as any)?.(); } catch {}
     };
   }, []);
 

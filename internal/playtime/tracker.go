@@ -30,13 +30,17 @@ const (
 const pollInterval = 30 * time.Second
 
 // Service tracks live game sessions and writes them to the DB.
+// `emit` is invoked on session start and end (with payload {gameId,
+// startedAt, endedAt, durationSeconds}) so subscribers like the UI can
+// refresh tile chips immediately rather than waiting for the next scan.
 type Service struct {
-	db *sqlite.Store
+	db   *sqlite.Store
+	emit func(event string, payload any)
 
-	mu       sync.Mutex
-	active   map[string]*liveSession // gameID → session
-	cancel   context.CancelFunc
-	running  bool
+	mu      sync.Mutex
+	active  map[string]*liveSession // gameID → session
+	cancel  context.CancelFunc
+	running bool
 }
 
 type liveSession struct {
@@ -45,8 +49,13 @@ type liveSession struct {
 	exeName   string // basename we matched
 }
 
-func New(db *sqlite.Store) *Service {
-	return &Service{db: db, active: map[string]*liveSession{}}
+// New constructs a tracker. `emit` may be nil (tests / pre-Wails init) —
+// the tracker silently no-ops the event channel in that case.
+func New(db *sqlite.Store, emit func(string, any)) *Service {
+	if emit == nil {
+		emit = func(string, any) {}
+	}
+	return &Service{db: db, emit: emit, active: map[string]*liveSession{}}
 }
 
 func (s *Service) Start(parent context.Context) {
@@ -150,6 +159,7 @@ func (s *Service) poll() {
 		s.active[gameID] = &liveSession{id: ps.ID, startedAt: now, exeName: exeName}
 		_ = s.db.MarkGamePlaying(gameID, now)
 		slog.Info("playtime: session start", "gameId", gameID, "exe", exeName)
+		s.emit("playtime:changed", map[string]any{"gameId": gameID, "startedAt": now})
 	}
 
 	// Close sessions whose exe is no longer running.
@@ -164,6 +174,11 @@ func (s *Service) poll() {
 		_ = s.db.CloseSession(sess.id, now, dur)
 		_ = s.db.UpdateGamePlayStats(gameID, now, dur)
 		slog.Info("playtime: session end", "gameId", gameID, "seconds", dur)
+		s.emit("playtime:changed", map[string]any{
+			"gameId":          gameID,
+			"endedAt":         now,
+			"durationSeconds": dur,
+		})
 		delete(s.active, gameID)
 	}
 }

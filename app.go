@@ -73,7 +73,11 @@ func (a *App) Startup(ctx context.Context) {
 	a.launch = launcher.New(db)
 	a.updater = updater.New(AppVersion)
 	a.watcher = watcher.New(a.cfg, a.db, a.bk)
-	a.playtime = playtime.New(a.db)
+	a.playtime = playtime.New(a.db, func(ev string, payload any) {
+		if a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, ev, payload)
+		}
+	})
 	a.playtime.Start(ctx)
 
 	// Clean up the previous binary that minio/selfupdate leaves behind as a

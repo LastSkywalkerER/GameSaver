@@ -5,7 +5,7 @@
 // console. The user's choice is remembered (gs:soleMonitorId localStorage)
 // so subsequent logons skip this overlay automatically.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { api } from "../../api";
 import { useControllerButton, useControllerNav } from "../../controller";
@@ -32,12 +32,22 @@ function displayLabel(id: string): string {
 }
 
 export function MonitorPicker({
-  monitors,
+  monitors: rawMonitors,
   onDone,
 }: {
   monitors: Monitor[];
   onDone: () => void;
 }) {
+  // EnumDisplayDevices returns monitors in adapter-index order, not
+  // left-to-right layout order. That meant pressing ← on the d-pad
+  // could highlight the visually-right monitor — confusing as hell.
+  // Sort once by physical X (then Y) so the navigation order matches
+  // what the user sees on screen.
+  const monitors = useMemo(() =>
+    [...rawMonitors].sort((a, b) => a.positionX - b.positionX || a.positionY - b.positionY),
+    [rawMonitors],
+  );
+
   // Start on the primary monitor if we have one — that's almost always
   // where the user is looking when shell mode boots.
   const initial = Math.max(0, monitors.findIndex((m) => m.isPrimary));
