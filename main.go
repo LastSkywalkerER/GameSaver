@@ -14,6 +14,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"GameSaver/internal/config"
 	"GameSaver/internal/logging"
@@ -67,7 +68,27 @@ func main() {
 		// Close button hides the window instead of killing the process —
 		// app keeps running in the tray (watcher etc. stay alive).
 		HideWindowOnClose: true,
-		Bind:              []interface{}{app},
+		// Only one instance allowed — a second exec (e.g. user double-clicks
+		// the tray-resident exe again) hands off to the running instance and
+		// exits, otherwise we get duplicate playtime sessions, duplicate
+		// watchers, duplicate trays, etc. The callback unhides + raises the
+		// existing window so the user sees it pop up.
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "GameSaver-LastSkywalkerER-single-instance",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				ctx := app.Context()
+				if ctx == nil {
+					return
+				}
+				wailsruntime.WindowShow(ctx)
+				wailsruntime.WindowUnminimise(ctx)
+				// Toggle always-on-top to force the OS to bring it forward
+				// past the taskbar flash.
+				wailsruntime.WindowSetAlwaysOnTop(ctx, true)
+				wailsruntime.WindowSetAlwaysOnTop(ctx, false)
+			},
+		},
+		Bind: []interface{}{app},
 		Windows: &windows.Options{
 			WebviewIsTransparent:              false,
 			WindowIsTranslucent:               false,
