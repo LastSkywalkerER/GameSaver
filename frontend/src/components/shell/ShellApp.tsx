@@ -76,12 +76,43 @@ export function ShellApp({
     }
   }, []);
 
-  // Show on mount, and re-show whenever the display topology changes
-  // (monitor plugged/unplugged, or one woke/slept).
+  // After the user commits a monitor, MakeSole disabling the others
+  // changes the topology — which our display.Watch picks up and would
+  // otherwise treat as "re-show the picker", looping forever. We instead
+  // enter a SETTLING window: for ~30 s after a pick we ignore topology
+  // changes (the physical re-handshake/dribble) and just silently re-
+  // assert the chosen monitor, so it sticks. Only changes AFTER the
+  // window (e.g. a genuine wake-from-sleep much later) reopen the picker.
+  const committedRef = useRef<string>("");
+  const lastCommitRef = useRef<number>(0);
+  const changeTimerRef = useRef<number | null>(null);
+  const SETTLE_MS = 30000;
+
   useEffect(() => {
     openPicker();
-    const off = EventsOn("display:changed", () => { openPicker(); });
-    return () => { try { (off as any)?.(); } catch {} };
+
+    const handle = () => {
+      // Coalesce bursts of display:changed (a single re-handshake fires
+      // several) — act 3 s after the dust settles.
+      if (changeTimerRef.current) window.clearTimeout(changeTimerRef.current);
+      changeTimerRef.current = window.setTimeout(async () => {
+        const sincePick = Date.now() - lastCommitRef.current;
+        if (committedRef.current && sincePick < SETTLE_MS) {
+          // Still settling after our own pick — re-assert the choice
+          // silently instead of reopening the picker. A no-op once the
+          // topology has truly narrowed to the one monitor.
+          try { await api.MakeSoleMonitor(committedRef.current); } catch (e) { console.warn("re-assert monitor", e); }
+          return;
+        }
+        openPicker();
+      }, 3000);
+    };
+
+    const off = EventsOn("display:changed", handle);
+    return () => {
+      try { (off as any)?.(); } catch {}
+      if (changeTimerRef.current) window.clearTimeout(changeTimerRef.current);
+    };
   }, [openPicker]);
 
   // Keep activeIdx in range when the list shrinks (e.g. a hidden flag flips).
@@ -297,7 +328,16 @@ export function ShellApp({
       {pickPrep && (
         <MonitorPicker
           prep={pickPrep}
-          onDone={() => setPickPrep(null)}
+          onDone={(chosenId) => {
+            setPickPrep(null);
+            if (chosenId) {
+              // Arm the settling window so the topology churn from
+              // disabling the other monitors doesn't bounce the picker
+              // straight back open.
+              committedRef.current = chosenId;
+              lastCommitRef.current = Date.now();
+            }
+          }}
         />
       )}
 

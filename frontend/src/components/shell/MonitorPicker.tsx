@@ -44,7 +44,10 @@ export function MonitorPicker({
   onDone,
 }: {
   prep: PickPrep;
-  onDone: () => void;
+  // chosenId is the monitor the user committed to (undefined if they
+  // skipped). The parent uses it to suppress the self-inflicted
+  // display:changed storm that MakeSole triggers.
+  onDone: (chosenId?: string) => void;
 }) {
   // Sort left-to-right so d-pad direction matches physical layout.
   const monitors = useMemo(
@@ -86,7 +89,7 @@ export function MonitorPicker({
       await api.FinishMonitorPick(m.id);
       try { localStorage.setItem(REMEMBERED_KEY, m.id); } catch {}
       api.Toast("success", `Активный монитор: ${displayLabel(m.id)}`);
-      onDone();
+      onDone(m.id);
     } catch (e) {
       api.Toast("error", "Не удалось переключить мониторы: " + String(e));
       setApplying(false);
