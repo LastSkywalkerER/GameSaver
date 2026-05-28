@@ -80,9 +80,14 @@ export function PowerMenu({
     });
   }
 
-  function confirm() {
+  // activate(i) runs a SPECIFIC action. Controller/keyboard pass the
+  // selected index; mouse passes the clicked index. Previously the click
+  // handler did setActive(i) then confirm(), but confirm() read the stale
+  // `active` from its closure — so a click fired whatever was *highlighted*,
+  // not what was under the cursor.
+  function activate(i: number) {
     playSelect();
-    void actions[active].run();
+    void actions[i].run();
   }
 
   useControllerNav((dir) => {
@@ -90,7 +95,7 @@ export function PowerMenu({
     if (dir === "right") move(+1);
   });
   useControllerButton((btn) => {
-    if (btn === "a") confirm();
+    if (btn === "a") activate(active);
     else if (btn === "b" || btn === "back") { playBack(); onClose(); }
   });
 
@@ -98,7 +103,7 @@ export function PowerMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") { e.preventDefault(); move(-1); }
       else if (e.key === "ArrowRight") { e.preventDefault(); move(+1); }
-      else if (e.key === "Enter") { e.preventDefault(); confirm(); }
+      else if (e.key === "Enter") { e.preventDefault(); activate(active); }
       else if (e.key === "Escape") { e.preventDefault(); playBack(); onClose(); }
     };
     window.addEventListener("keydown", onKey);
@@ -118,7 +123,8 @@ export function PowerMenu({
           return (
             <button
               key={a.key}
-              onClick={() => { setActive(i); confirm(); }}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => { setActive(i); activate(i); }}
               className={clsx(
                 "flex flex-col items-center gap-3 rounded-2xl border-2 p-8 text-center transition-all",
                 isActive

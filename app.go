@@ -865,9 +865,17 @@ func (a *App) RestoreSelf() {
 // as Win+L. GameSaver keeps running in the background.
 func (a *App) LockWorkstation() error { return power.Lock() }
 
-// SleepWorkstation puts the PC into S3 standby. May hibernate instead
-// if "Hibernate after standby" is enabled in the user's power plan.
-func (a *App) SleepWorkstation() error { return power.Sleep() }
+// SleepWorkstation puts the PC into S3 standby. power.Sleep() blocks
+// until the machine resumes, so we pause the XInput poller for the
+// duration — no point hammering the controller (and keeping its USB
+// dongle active) while the system is trying to suspend.
+func (a *App) SleepWorkstation() error {
+	if a.controller != nil {
+		a.controller.SetPaused(true)
+		defer a.controller.SetPaused(false)
+	}
+	return power.Sleep()
+}
 
 // OpenWindowsSoundSettings opens the classic Sound control panel
 // (mmsys.cpl, "Playback" tab). We deliberately avoid the modern
