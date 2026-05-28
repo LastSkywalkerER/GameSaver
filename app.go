@@ -52,6 +52,13 @@ type App struct {
 	playtime   *playtime.Service
 	controller *controller.Service
 
+	// Last update found by a Check (background, periodic, or manual). Reused
+	// by ApplyUpdate so it doesn't re-hit the GitHub API — a second
+	// /releases/latest call risks a 403 (unauthenticated rate limit) right
+	// when the user clicks "Обновить". The asset download itself goes to
+	// objects.githubusercontent.com and isn't rate-limited.
+	lastUpdate *updater.UpdateInfo
+
 	scanMu sync.Mutex
 }
 
@@ -213,6 +220,7 @@ func (a *App) runUpdateCheck(manual bool) {
 		return
 	}
 	slog.Info("update available", "current", info.CurrentVer, "latest", info.LatestVer)
+	a.lastUpdate = info
 	wailsruntime.EventsEmit(a.ctx, "update:available", info)
 }
 
@@ -468,6 +476,7 @@ func (a *App) CheckForUpdate() (*updater.UpdateInfo, error) {
 	// bypasses the SkippedUpdateVer gate — if the user clicked "Проверить
 	// сейчас" they want to see the banner even for a version they once skipped.
 	if info != nil && info.Available && a.ctx != nil {
+		a.lastUpdate = info
 		wailsruntime.EventsEmit(a.ctx, "update:available", info)
 	}
 	return info, nil
@@ -477,9 +486,17 @@ func (a *App) CheckForUpdate() (*updater.UpdateInfo, error) {
 // replaces the running binary and returns. The caller (UI) is expected to
 // trigger a restart afterwards.
 func (a *App) ApplyUpdate() error {
-	info, err := a.updater.Check(a.ctx)
-	if err != nil {
-		return err
+	// Reuse the info from the banner's Check — re-querying the GitHub API
+	// here is what produced the "403 Forbidden" (a second unauthenticated
+	// /releases/latest call hit the rate limit). Only fall back to a fresh
+	// Check if we somehow have no cached info.
+	info := a.lastUpdate
+	if info == nil || !info.Available || info.AssetURL == "" {
+		var err error
+		info, err = a.updater.Check(a.ctx)
+		if err != nil {
+			return err
+		}
 	}
 	if !info.Available {
 		return fmt.Errorf("no update available")

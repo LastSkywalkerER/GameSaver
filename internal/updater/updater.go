@@ -92,6 +92,9 @@ func (u *Updater) Check(ctx context.Context) (*UpdateInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", u.Owner, u.Repo)
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
+	// GitHub rejects API requests without a User-Agent (403). Be explicit
+	// rather than rely on Go's default UA, which GitHub may also throttle.
+	req.Header.Set("User-Agent", "GameSaver-updater")
 	resp, err := u.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -144,6 +147,7 @@ func (u *Updater) Apply(ctx context.Context, info *UpdateInfo) error {
 		return fmt.Errorf("no asset url")
 	}
 	req, _ := http.NewRequestWithContext(ctx, "GET", info.AssetURL, nil)
+	req.Header.Set("User-Agent", "GameSaver-updater")
 	resp, err := u.HTTPClient.Do(req)
 	if err != nil {
 		return err
@@ -179,6 +183,7 @@ func (u *Updater) Apply(ctx context.Context, info *UpdateInfo) error {
 
 func (u *Updater) fetchSha(ctx context.Context, url, want string) string {
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Set("User-Agent", "GameSaver-updater")
 	resp, err := u.HTTPClient.Do(req)
 	if err != nil {
 		return ""
