@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -593,16 +594,33 @@ func (a *App) RestartApp() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, os.Args[1:]...)
-	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	// After a self-update, minio/selfupdate renames the running image to
+	// "<exe>.old" and writes the NEW binary at the original path. Depending
+	// on the OS, os.Executable() can report the ".old" path — strip it so we
+	// relaunch the freshly-installed binary, not the leftover old one.
+	exe = strings.TrimSuffix(exe, ".old")
+
+	// We must NOT launch the new instance while we're still alive: the Wails
+	// SingleInstanceLock mutex is still held by us, so the new process would
+	// see "another instance running", hand off, and exit immediately — the
+	// app would never come back after an update. So we hand the relaunch to a
+	// detached cmd that waits ~2 s (for us to fully exit and release the
+	// mutex) and only then starts the new binary.
+	//
+	// `ping -n 3 127.0.0.1` is the headless-safe delay (`timeout` errors with
+	// no console under CREATE_NO_WINDOW).
+	line := fmt.Sprintf(`ping -n 3 127.0.0.1 >nul & start "" "%s"`, exe)
+	cmd := exec.Command("cmd", "/c", line)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW — detached, no console flash
+	}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	// Give the new process a moment to take the window, then bow out.
+	// Exit promptly so the mutex frees well before the relauncher's 2 s timer.
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		os.Exit(0)
 	}()
 	return nil
