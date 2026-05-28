@@ -566,11 +566,103 @@ func (s *Service) applyManifestEntry(g *domain.Game, entry *ManifestEntry, vars 
 		}
 		added = append(added, c.path)
 	}
+	// Games often split saves/config between AppData\Roaming, \Local and
+	// \LocalLow under the SAME Publisher\Game subpath, but the manifest may
+	// only list one root (LEGO Star Wars TSS: Steam saves are in Roaming,
+	// but there's a twin under Local the manifest doesn't cover). For each
+	// matched AppData path, probe the same relative subpath (and its parent
+	// game folder) under the other AppData roots and register what exists.
+	added = append(added, s.mirrorAppDataRoots(g, added, vars)...)
+
 	if g.SteamAppID == 0 && entry.Steam != nil && entry.Steam.ID > 0 {
 		g.SteamAppID = entry.Steam.ID
 		_ = s.db.UpsertGame(g)
 	}
 	return added
+}
+
+// mirrorAppDataRoots takes already-matched save paths and, for any under an
+// AppData root (Roaming/Local/LocalLow), probes the same relative path —
+// and its parent game folder — under the OTHER AppData roots, registering
+// any that exist with files. Targeted (identical relative subpath) so a
+// false positive would require an unrelated game to use the same
+// Publisher\Game folder name in a different root, which doesn't happen.
+func (s *Service) mirrorAppDataRoots(g *domain.Game, addedPaths []string, vars TemplateVars) []string {
+	roots := []string{vars.WinAppData, vars.WinLocalAppData, vars.WinLocalAppDataLow}
+	known := map[string]bool{}
+	for _, p := range addedPaths {
+		known[normalizePathKey(p)] = true
+	}
+	var extra []string
+
+	tryAdd := func(cand string) {
+		key := normalizePathKey(cand)
+		if known[key] {
+			return
+		}
+		st, err := osStat(cand)
+		if err != nil || !st.IsDir() {
+			return
+		}
+		size, count, mtime := util.DirSizeAndCount(cand)
+		if count == 0 || size == 0 || size > maxSaveBytes {
+			return
+		}
+		loc := &domain.SaveLocation{
+			ID:           util.SaveLocationID(g.ID, cand),
+			GameID:       g.ID,
+			Path:         cand,
+			Kind:         classifySaveKind(cand),
+			SourceHint:   "mirror", // discovered by AppData-root mirroring
+			SizeBytes:    size,
+			FileCount:    count,
+			Mtime:        mtime,
+			WatchEnabled: true,
+		}
+		if s.db.UpsertSaveLocation(loc) == nil {
+			known[key] = true
+			extra = append(extra, cand)
+		}
+	}
+
+	for _, p := range addedPaths {
+		// Which AppData root is p under?
+		var base, rel string
+		for _, r := range roots {
+			if r == "" {
+				continue
+			}
+			if rp, ok := relUnder(p, r); ok {
+				base, rel = r, rp
+				break
+			}
+		}
+		if rel == "" || base == "" {
+			continue
+		}
+		parent := filepath.Dir(rel) // Publisher\Game (one level up from e.g. SAVEDGAMES)
+		for _, r := range roots {
+			if r == "" || strings.EqualFold(r, base) {
+				continue
+			}
+			tryAdd(filepath.Join(r, rel))
+			if parent != "." && parent != string(filepath.Separator) {
+				tryAdd(filepath.Join(r, parent))
+			}
+		}
+	}
+	return extra
+}
+
+// relUnder returns p's path relative to root (and true) if p is inside root,
+// case-insensitively. "" otherwise.
+func relUnder(p, root string) (string, bool) {
+	pl := strings.ToLower(filepath.Clean(p))
+	rl := strings.ToLower(filepath.Clean(root))
+	if !strings.HasPrefix(pl, rl+string(filepath.Separator)) {
+		return "", false
+	}
+	return p[len(root)+1:], true
 }
 
 // pathCand is the working type for applyManifestEntry; named (rather than

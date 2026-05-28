@@ -20,6 +20,9 @@ export function GameDrawer({
   const [showPicker, setShowPicker] = useState(false);
   const [showDeepScan, setShowDeepScan] = useState(false);
   const [sessions, setSessions] = useState<PlaySession[]>([]);
+  // Save migration (between two of this game's save locations).
+  const [migFrom, setMigFrom] = useState("");
+  const [migTo, setMigTo] = useState("");
   const hero = coverUrl(view.game.heroPath) ?? coverUrl(view.game.coverPath);
 
   // Re-fetch sessions whenever the drawer opens a different game or the game
@@ -82,6 +85,31 @@ export function GameDrawer({
       onChanged();
     } finally { setBusy(null); }
   }
+  async function doMigrate() {
+    const from = migFrom || view.saveLocations[0]?.id;
+    const to = migTo || view.saveLocations[1]?.id;
+    if (!from || !to || from === to) {
+      api.Toast("error", "Выбери разные источник и назначение");
+      return;
+    }
+    const fromLoc = view.saveLocations.find((l) => l.id === from);
+    const toLoc = view.saveLocations.find((l) => l.id === to);
+    const ok = await confirmModal({
+      title: "Перенести сейвы?",
+      body: `Файлы из\n${fromLoc?.path}\nбудут скопированы в\n${toLoc?.path}\n(одноимённые перезапишутся). Текущее состояние назначения сначала забэкапится.`,
+      confirmLabel: "Перенести",
+    });
+    if (!ok) return;
+    setBusy("migrate");
+    try {
+      await api.MigrateSave(view.game.id, from, to);
+      api.Toast("success", "Сейвы перенесены (создан preMigrate-бэкап).");
+      onChanged();
+    } catch (e) {
+      api.Toast("error", "Перенос: " + String(e));
+    } finally { setBusy(null); }
+  }
+
   async function doRemoveSave(locID: string) {
     const ok = await confirmModal({
       title: "Открепить папку сейва?",
@@ -249,6 +277,39 @@ export function GameDrawer({
                 </div>
               ))}
             </div>
+
+            {/* Migrate saves between this game's locations (e.g. pirate → Steam) */}
+            {view.saveLocations.length >= 2 && (
+              <div className="card mt-2 px-3 py-2">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Перенос сейвов между установками</div>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <select
+                    className="input min-w-0 flex-1"
+                    value={migFrom || view.saveLocations[0].id}
+                    onChange={(e) => setMigFrom(e.target.value)}
+                    title="Источник"
+                  >
+                    {view.saveLocations.map((l) => (
+                      <option key={l.id} value={l.id}>{l.sourceHint || l.kind}: …{l.path.slice(-40)}</option>
+                    ))}
+                  </select>
+                  <span className="text-muted">→</span>
+                  <select
+                    className="input min-w-0 flex-1"
+                    value={migTo || view.saveLocations[1].id}
+                    onChange={(e) => setMigTo(e.target.value)}
+                    title="Назначение"
+                  >
+                    {view.saveLocations.map((l) => (
+                      <option key={l.id} value={l.id}>{l.sourceHint || l.kind}: …{l.path.slice(-40)}</option>
+                    ))}
+                  </select>
+                  <button className="btn" disabled={busy === "migrate"} onClick={doMigrate}>
+                    {busy === "migrate" ? "Переношу…" : "Перенести"}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Play sessions */}

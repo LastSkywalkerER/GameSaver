@@ -67,6 +67,8 @@ export function LockWorkstation():Promise<void>;
 
 export function MakeSoleMonitor(arg1:string):Promise<void>;
 
+export function MigrateSave(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function MinimizeSelf():Promise<void>;
 
 export function OpenAutoLoginConfigurator():Promise<void>;

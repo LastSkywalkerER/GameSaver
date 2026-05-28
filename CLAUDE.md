@@ -69,7 +69,8 @@ This file is alive. It grows after incidents and decisions.
 │   ├── 0018-autologin-via-netplwiz.md
 │   ├── 0019-sleep-setsuspendstate-direct.md
 │   ├── 0020-launch-exe-over-deeplink.md
-│   └── 0021-sunshine-apps-json-sync.md
+│   ├── 0021-sunshine-apps-json-sync.md
+│   └── 0022-multi-location-discovery-and-migration.md
 │
 ├── chronicles/                        # PROJECT MILESTONES (how we got here)
 │   ├── 2026-05-26-mvp-m0-m11.md

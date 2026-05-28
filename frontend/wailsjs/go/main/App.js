@@ -114,6 +114,10 @@ export function MakeSoleMonitor(arg1) {
   return window['go']['main']['App']['MakeSoleMonitor'](arg1);
 }
 
+export function MigrateSave(arg1, arg2, arg3) {
+  return window['go']['main']['App']['MigrateSave'](arg1, arg2, arg3);
+}
+
 export function MinimizeSelf() {
   return window['go']['main']['App']['MinimizeSelf']();
 }

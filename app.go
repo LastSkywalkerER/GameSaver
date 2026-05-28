@@ -390,6 +390,16 @@ func (a *App) AddManualSaveLocation(gameID, path string) (*domain.SaveLocation, 
 	return a.match.AddManualSaveLocation(gameID, path)
 }
 
+// MigrateSave copies saves from one of a game's save locations into another
+// (e.g. pirate → Steam). Backs up the game first (preMigrate). Refreshes the
+// view afterward.
+func (a *App) MigrateSave(gameID, fromLocID, toLocID string) error {
+	if err := a.bk.MigrateSave(a.ctx, gameID, fromLocID, toLocID); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (a *App) RemoveSaveLocation(locationID string) error {
 	return a.match.RemoveSaveLocation(locationID)
 }

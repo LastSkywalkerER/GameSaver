@@ -34,6 +34,103 @@ func New(cfg *config.Config, db *sqlite.Store) *Engine {
 	return &Engine{cfg: cfg, db: db}
 }
 
+// MigrateSave copies the contents of one of a game's save locations into
+// another (e.g. pirate → Steam after switching versions). It first takes a
+// preMigrate backup of the WHOLE game (so the destination is recoverable),
+// then merges the source tree over the destination, then refreshes the
+// destination location's size/count/mtime in the DB.
+//
+// Both locations must belong to the same game. Files present only in the
+// destination are kept; same-named files are overwritten by the source.
+func (e *Engine) MigrateSave(ctx context.Context, gameID, fromLocID, toLocID string) error {
+	if fromLocID == toLocID {
+		return errors.New("источник и назначение совпадают")
+	}
+	from, err := e.db.GetSaveLocation(fromLocID)
+	if err != nil {
+		return fmt.Errorf("источник: %w", err)
+	}
+	to, err := e.db.GetSaveLocation(toLocID)
+	if err != nil {
+		return fmt.Errorf("назначение: %w", err)
+	}
+	if from.GameID != gameID || to.GameID != gameID {
+		return errors.New("локации принадлежат разным играм")
+	}
+	fst, err := os.Stat(from.Path)
+	if err != nil {
+		return fmt.Errorf("источник недоступен: %w", err)
+	}
+
+	// Safety net: snapshot everything (incl. destination) before we touch it.
+	if _, err := e.BackupGame(ctx, gameID, domain.TriggerPreMigrate); err != nil {
+		slog.Warn("preMigrate backup", "err", err)
+	}
+
+	if fst.IsDir() {
+		if err := copyTree(from.Path, to.Path); err != nil {
+			return fmt.Errorf("копирование: %w", err)
+		}
+	} else {
+		dst := to.Path
+		if di, err := os.Stat(to.Path); err == nil && di.IsDir() {
+			dst = filepath.Join(to.Path, filepath.Base(from.Path))
+		}
+		if err := copyFile(from.Path, dst); err != nil {
+			return fmt.Errorf("копирование файла: %w", err)
+		}
+	}
+
+	if st, err := os.Stat(to.Path); err == nil {
+		if st.IsDir() {
+			to.SizeBytes, to.FileCount, to.Mtime = util.DirSizeAndCount(to.Path)
+		} else {
+			to.SizeBytes, to.FileCount, to.Mtime = st.Size(), 1, st.ModTime().Unix()
+		}
+		_ = e.db.UpsertSaveLocation(to)
+	}
+	return nil
+}
+
+// copyTree recursively merges src into dst (dst created if missing).
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return copyFile(p, target)
+	})
+}
+
+// copyFile copies a single file's contents (creating/truncating dst).
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
+
 // BackupGame snapshots every SaveLocation of a game; returns the new snapshots
 // (or skipped ones with hash equal to latest).
 func (e *Engine) BackupGame(ctx context.Context, gameID string, trigger domain.Trigger) ([]*domain.Snapshot, error) {
