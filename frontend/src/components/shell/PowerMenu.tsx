@@ -22,10 +22,14 @@ export function PowerMenu({
   onClose,
   onExit,
   onSwitchMonitor,
+  onArmSuppress,
 }: {
   onClose: () => void;
   onExit: () => void;
   onSwitchMonitor: () => void;
+  // Called right before Lock/Sleep so the parent can mute the
+  // display:changed → picker reaction while the displays power down.
+  onArmSuppress: () => void;
 }) {
   const [active, setActive] = useState(0);
   const lastMove = useRef(0);
@@ -40,6 +44,7 @@ export function PowerMenu({
       key: "lock", icon: "🔒", label: "Заблокировать",
       desc: "Выкинет на экран выбора пользователя. GameSaver продолжит работать в фоне.",
       run: async () => {
+        onArmSuppress();
         try { await api.LockWorkstation(); onClose(); }
         catch (e) { api.Toast("error", "Lock: " + String(e)); }
       },
@@ -48,6 +53,10 @@ export function PowerMenu({
       key: "sleep", icon: "🌙", label: "Сон",
       desc: "PC уходит в S3 standby. По нажатию любой клавиши вернётся в работу.",
       run: async () => {
+        // Arm suppression BEFORE the call — the displays powering down for
+        // sleep fire display:changed, which must not reopen the picker (and
+        // re-enabling monitors would abort the sleep transition entirely).
+        onArmSuppress();
         try { await api.SleepWorkstation(); onClose(); }
         catch (e) { api.Toast("error", "Sleep: " + String(e)); }
       },

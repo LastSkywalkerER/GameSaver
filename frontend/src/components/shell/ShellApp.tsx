@@ -88,6 +88,15 @@ export function ShellApp({
   const changeTimerRef = useRef<number | null>(null);
   const SETTLE_MS = 30000;
 
+  // Hard mute on display:changed handling until this wall-clock time.
+  // Armed before Lock/Sleep: the displays powering down would otherwise
+  // reopen the picker (and re-enabling monitors aborts the sleep). The
+  // window is wall-clock based, so a wake hours later — when Date.now()
+  // is far past suppressUntil — is NOT muted and the picker shows as it
+  // should.
+  const suppressUntilRef = useRef<number>(0);
+  const armSuppress = useCallback(() => { suppressUntilRef.current = Date.now() + 20000; }, []);
+
   useEffect(() => {
     openPicker();
 
@@ -96,6 +105,8 @@ export function ShellApp({
       // several) — act 3 s after the dust settles.
       if (changeTimerRef.current) window.clearTimeout(changeTimerRef.current);
       changeTimerRef.current = window.setTimeout(async () => {
+        // Muted (Lock/Sleep in progress) — leave displays alone entirely.
+        if (Date.now() < suppressUntilRef.current) return;
         const sincePick = Date.now() - lastCommitRef.current;
         if (committedRef.current && sincePick < SETTLE_MS) {
           // Still settling after our own pick — re-assert the choice
@@ -345,6 +356,7 @@ export function ShellApp({
         <PowerMenu
           onClose={() => setOverlay("none")}
           onSwitchMonitor={() => openPicker()}
+          onArmSuppress={armSuppress}
           onExit={async () => {
             try { await api.RestoreMonitorConfig(); } catch (e) { console.warn("restore monitors", e); }
             try { localStorage.removeItem("gs:soleMonitorId"); } catch {}
