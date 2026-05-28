@@ -27,6 +27,8 @@ export function SettingsPage() {
   const [reconciling, setReconciling] = useState(false);
   const [shell, setShell] = useState<ShellStatus | null>(null);
   const [shellBusy, setShellBusy] = useState(false);
+  const [sun, setSun] = useState<{ installed: boolean; appsPath: string; managed: number; needsAdmin: boolean } | null>(null);
+  const [sunBusy, setSunBusy] = useState(false);
   const [soundPack, setSoundPackState] = useState<SoundPack>(() => getSoundPack());
   useEffect(() => subscribeSoundPack(setSoundPackState), []);
   const tilePrefs = useTilePrefs();
@@ -38,7 +40,35 @@ export function SettingsPage() {
       if (c?.language) setLanguage(c.language);
     });
     refreshShellStatus();
+    refreshSunshine();
   }, []);
+
+  async function refreshSunshine() {
+    try { setSun(await (api as any).GetSunshineStatus()); }
+    catch (e) { console.error(e); }
+  }
+
+  async function sunshineSync() {
+    setSunBusy(true);
+    try {
+      const n: any = await (api as any).SunshineSync();
+      api.Toast("success", `Sunshine: синхронизировано игр — ${n}. Обнови список в Moonlight.`);
+      await refreshSunshine();
+    } catch (e) {
+      api.Toast("error", "Sunshine sync: " + String(e));
+    } finally { setSunBusy(false); }
+  }
+
+  async function sunshineClear() {
+    setSunBusy(true);
+    try {
+      const n: any = await (api as any).SunshineClear();
+      api.Toast("success", `Sunshine: удалено наших записей — ${n}.`);
+      await refreshSunshine();
+    } catch (e) {
+      api.Toast("error", "Sunshine clear: " + String(e));
+    } finally { setSunBusy(false); }
+  }
 
   async function refreshShellStatus() {
     try {
@@ -356,6 +386,40 @@ export function SettingsPage() {
           </button>
         </div>
       </section>
+
+      {/* Sunshine — full block when detected, dimmed stub when not. */}
+      {sun?.installed ? (
+        <section className="card p-4">
+          <div className="text-xs uppercase tracking-wide text-muted">Sunshine (стриминг)</div>
+          <p className="mt-2 text-xs text-muted">
+            Регистрирует игры из GameSaver в <code className="rounded bg-card px-1">apps.json</code>{" "}
+            Sunshine (с путями запуска и обложками) — они появятся в Moonlight.
+            Твои ручные записи (Desktop, Steam Big Picture и пр.) не трогаются.
+            {sun.needsAdmin && " Запись в Program Files требует подтверждения UAC."}
+          </p>
+          <div className="mt-1 text-[11px] text-muted">
+            Сейчас наших записей: <span className="text-gray-200">{sun.managed}</span>
+            {" · "}<span className="break-all">{sun.appsPath}</span>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button className="btn btn-primary" disabled={sunBusy} onClick={sunshineSync}>
+              {sunBusy ? "…" : "🔄 Синхронизировать игры"}
+            </button>
+            <button className="btn" disabled={sunBusy} onClick={sunshineClear}>
+              🧹 Очистить игры
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className="card p-4 opacity-50">
+          <div className="text-xs uppercase tracking-wide text-muted">Sunshine (стриминг)</div>
+          <p className="mt-2 text-xs text-muted">Sunshine не задетекчен в системе.</p>
+          <div className="mt-3 flex items-center gap-2">
+            <button className="btn" disabled>🔄 Синхронизировать игры</button>
+            <button className="btn" disabled>🧹 Очистить игры</button>
+          </div>
+        </section>
+      )}
 
       <section className="card p-4">
         <div className="text-xs uppercase tracking-wide text-muted">

@@ -6,6 +6,7 @@ import {context} from '../models';
 import {match} from '../models';
 import {main} from '../models';
 import {config} from '../models';
+import {sunshine} from '../models';
 import {display} from '../models';
 import {backup} from '../models';
 import {pipeline} from '../models';
@@ -45,6 +46,8 @@ export function GetConfig():Promise<config.Config>;
 export function GetGame(arg1:string):Promise<domain.GameView>;
 
 export function GetShellModeStatus():Promise<main.ShellModeStatus>;
+
+export function GetSunshineStatus():Promise<sunshine.Status>;
 
 export function HideGame(arg1:string,arg2:boolean):Promise<void>;
 
@@ -121,6 +124,10 @@ export function SkipUpdate(arg1:string):Promise<void>;
 export function SleepWorkstation():Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;
+
+export function SunshineClear():Promise<number>;
+
+export function SunshineSync():Promise<number>;
 
 export function Toast(arg1:string,arg2:string):Promise<void>;
 

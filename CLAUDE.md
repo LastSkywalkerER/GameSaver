@@ -68,7 +68,8 @@ This file is alive. It grows after incidents and decisions.
 │   ├── 0017-procedural-sound-web-audio.md
 │   ├── 0018-autologin-via-netplwiz.md
 │   ├── 0019-sleep-setsuspendstate-direct.md
-│   └── 0020-launch-exe-over-deeplink.md
+│   ├── 0020-launch-exe-over-deeplink.md
+│   └── 0021-sunshine-apps-json-sync.md
 │
 ├── chronicles/                        # PROJECT MILESTONES (how we got here)
 │   ├── 2026-05-26-mvp-m0-m11.md
@@ -138,6 +139,7 @@ This file is alive. It grows after incidents and decisions.
 | `power` | `LockWorkStation` + `SetSuspendState` (sleep with wake events disabled). |
 | `autologin` | Passwordless Windows logon helper — unhide netplwiz checkbox + launch it (never touches password). |
 | `shellmode` | Registry shell registration + on-demand watchdog download (SHA-256 verified). |
+| `sunshine` | Sync the library into Sunshine's `apps.json` (cmd/cover) + clear; elevated write, preserves user entries. See [decision 0021](.claude/decisions/0021-sunshine-apps-json-sync.md). |
 | `tray` | systray (skipped in shell mode). |
 | `updater` | GitHub-release self-update (minio/selfupdate), `.old` cleanup. |
 | `util` | `DirSizeAndCount`, hashing, etc. |

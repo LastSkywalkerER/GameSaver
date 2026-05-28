@@ -74,6 +74,10 @@ export function GetShellModeStatus() {
   return window['go']['main']['App']['GetShellModeStatus']();
 }
 
+export function GetSunshineStatus() {
+  return window['go']['main']['App']['GetSunshineStatus']();
+}
+
 export function HideGame(arg1, arg2) {
   return window['go']['main']['App']['HideGame'](arg1, arg2);
 }
@@ -224,6 +228,14 @@ export function SleepWorkstation() {
 
 export function Startup(arg1) {
   return window['go']['main']['App']['Startup'](arg1);
+}
+
+export function SunshineClear() {
+  return window['go']['main']['App']['SunshineClear']();
+}
+
+export function SunshineSync() {
+  return window['go']['main']['App']['SunshineSync']();
 }
 
 export function Toast(arg1, arg2) {

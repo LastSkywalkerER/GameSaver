@@ -467,6 +467,29 @@ export namespace pipeline {
 
 }
 
+export namespace sunshine {
+	
+	export class Status {
+	    installed: boolean;
+	    appsPath: string;
+	    managed: number;
+	    needsAdmin: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.appsPath = source["appsPath"];
+	        this.managed = source["managed"];
+	        this.needsAdmin = source["needsAdmin"];
+	    }
+	}
+
+}
+
 export namespace updater {
 	
 	export class UpdateInfo {

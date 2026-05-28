@@ -29,6 +29,7 @@ import (
 	"GameSaver/internal/scan/pipeline"
 	"GameSaver/internal/shellmode"
 	"GameSaver/internal/storage/sqlite"
+	"GameSaver/internal/sunshine"
 	"GameSaver/internal/tray"
 	"GameSaver/internal/updater"
 	"GameSaver/internal/watcher"
@@ -875,6 +876,89 @@ func (a *App) SleepWorkstation() error {
 		defer a.controller.SetPaused(false)
 	}
 	return power.Sleep()
+}
+
+// ===== Sunshine sync =====
+
+// GetSunshineStatus reports whether Sunshine is installed and how many
+// apps GameSaver currently manages in its apps.json. Drives the Settings
+// block (disabled/grey when not installed).
+func (a *App) GetSunshineStatus() (*sunshine.Status, error) {
+	st := sunshine.Detect()
+	return &st, nil
+}
+
+// SunshineSync writes every library game into Sunshine's apps.json (cmd +
+// working-dir + cover), preserving the user's own entries. Returns the
+// number of games synced. May trigger one UAC prompt if apps.json lives in
+// Program Files.
+func (a *App) SunshineSync() (int, error) {
+	games, err := a.ListGames()
+	if err != nil {
+		return 0, err
+	}
+	coversDir := a.cfg.CoversDir()
+	out := make([]sunshine.SyncGame, 0, len(games))
+	for _, gv := range games {
+		if gv.Game.Hidden {
+			continue
+		}
+		inst := pickInstallation(gv)
+		if inst == nil {
+			continue // nothing launchable
+		}
+		sg := sunshine.SyncGame{
+			Name:      gv.Game.Name,
+			Source:    string(inst.Source),
+			LaunchURI: inst.LaunchURI,
+		}
+		if inst.ExePath != "" && !strings.HasSuffix(inst.ExePath, "_no_exe_") {
+			sg.Exe = inst.ExePath
+			sg.WorkingDir = filepath.Dir(inst.ExePath)
+		}
+		if sg.Exe == "" && sg.LaunchURI == "" {
+			continue
+		}
+		if gv.Game.CoverPath != "" {
+			cover := filepath.Join(coversDir, gv.Game.CoverPath)
+			if _, err := os.Stat(cover); err == nil {
+				sg.CoverAbsPath = cover
+			}
+		}
+		out = append(out, sg)
+	}
+	return sunshine.Sync(out)
+}
+
+// SunshineClear removes only the entries GameSaver added to apps.json.
+func (a *App) SunshineClear() (int, error) {
+	return sunshine.Clear()
+}
+
+// pickInstallation chooses which installation to register, mirroring the
+// launcher's source priority (Steam > Epic > GOG > EA > Ubisoft > Battle.net
+// > first), preferring one that's actually launchable.
+func pickInstallation(gv *domain.GameView) *domain.Installation {
+	if len(gv.Installations) == 0 {
+		return nil
+	}
+	order := map[domain.SourceKind]int{
+		domain.SourceSteam: 1, domain.SourceEpic: 2, domain.SourceGOG: 3,
+		domain.SourceEA: 4, domain.SourceUbisoft: 5, domain.SourceBattleNet: 6,
+	}
+	var best *domain.Installation
+	bestRank := 99
+	for _, i := range gv.Installations {
+		r := 50
+		if v, ok := order[i.Source]; ok {
+			r = v
+		}
+		if r < bestRank {
+			bestRank = r
+			best = i
+		}
+	}
+	return best
 }
 
 // OpenWindowsSoundSettings opens the classic Sound control panel
