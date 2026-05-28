@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"image/jpeg"
+	_ "image/jpeg" // register JPEG decoder for image.Decode
 	"image/png"
 	"os"
 	"path/filepath"
@@ -190,13 +190,13 @@ func Sync(games []SyncGame, emit Emit) error {
 	out := &appsFile{Env: prev.Env, Apps: []map[string]interface{}{desktopEntry(prev)}}
 
 	emit("Готовлю обложки (PNG)…")
-	artDir := artDir()
-	_ = os.MkdirAll(artDir, 0o755)
+	staging := artDir()
+	_ = os.MkdirAll(staging, 0o755)
 	for _, g := range games {
 		if g.Name == "" {
 			continue
 		}
-		out.Apps = append(out.Apps, buildEntry(g, artDir))
+		out.Apps = append(out.Apps, buildEntry(g, staging))
 	}
 
 	data, err := marshalApps(out)
@@ -204,7 +204,13 @@ func Sync(games []SyncGame, emit Emit) error {
 		return err
 	}
 	emit(fmt.Sprintf("Записываю apps.json (%d записей)…", len(out.Apps)))
-	return applyElevated(st.AppsPath, data, emit)
+	// Copy our transcoded covers into Sunshine's own assets/ dir and
+	// reference them by bare filename — that's how Sunshine's own (working)
+	// entries do box art; absolute paths to arbitrary folders don't render
+	// in Moonlight.
+	assets := assetsDir()
+	coverCmd := fmt.Sprintf(`copy /Y "%s\gs_*.png" "%s\"`, staging, assets)
+	return applyElevated(st.AppsPath, data, coverCmd, "Copy covers to assets", emit)
 }
 
 // Clear resets apps.json to just the Desktop entry and restarts Sunshine.
@@ -226,7 +232,19 @@ func Clear(emit Emit) error {
 		return err
 	}
 	emit("Очищаю список (оставляю только Desktop)…")
-	return applyElevated(st.AppsPath, data, emit)
+	// Also wipe the covers we copied into assets/.
+	coverCmd := fmt.Sprintf(`del /q "%s\gs_*.png" 2>nul`, assetsDir())
+	return applyElevated(st.AppsPath, data, coverCmd, "Remove our covers from assets", emit)
+}
+
+// assetsDir is Sunshine's box-art directory (sibling of the exe). Bare
+// image-path filenames resolve against it.
+func assetsDir() string {
+	exe, ok := findSunshineExe()
+	if !ok {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(exe), "assets")
 }
 
 func buildEntry(g SyncGame, artDir string) map[string]interface{} {
@@ -250,8 +268,10 @@ func buildEntry(g SyncGame, artDir string) map[string]interface{} {
 	case g.LaunchURI != "":
 		e["cmd"] = g.LaunchURI
 	}
-	if png := ensurePNGCover(g.CoverAbsPath, artDir); png != "" {
-		e["image-path"] = png
+	if name := ensureCoverPNG(g.CoverAbsPath, artDir); name != "" {
+		// Bare filename — Sunshine resolves it against its assets/ dir,
+		// where applyElevated copies the gs_*.png files.
+		e["image-path"] = name
 	}
 	return e
 }
@@ -273,33 +293,33 @@ func artDir() string {
 	return filepath.Join(base, "GameSaver", "cache", "sunshine-art")
 }
 
-// ensurePNGCover returns a PNG path for the cover. PNG sources are used
-// as-is; JPG (the majority of our cache) is transcoded once into artDir.
-// Returns "" if there's no cover or it can't be decoded (entry then has no
-// box art rather than failing the whole sync).
-func ensurePNGCover(src, dir string) string {
+// ensureCoverPNG produces a PNG named "gs_<base>.png" in the staging dir
+// and returns the BARE filename to use as image-path. The gs_ prefix lets
+// Clear wipe our covers from assets/ (del gs_*.png) without touching the
+// user's / Sunshine's own art. Returns "" if there's no usable cover
+// (entry then has no box art rather than failing the whole sync).
+func ensureCoverPNG(src, dir string) string {
 	if src == "" {
 		return ""
 	}
-	if strings.EqualFold(filepath.Ext(src), ".png") {
-		return src
-	}
-	// Transcode JPG → PNG. Name by source base so re-syncs reuse the file.
-	dst := filepath.Join(dir, strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))+".png")
+	base := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+	name := "gs_" + base + ".png"
+	dst := filepath.Join(dir, name)
 	if fileExists(dst) {
-		return dst
+		return name
+	}
+	if strings.EqualFold(filepath.Ext(src), ".png") {
+		if copyFile(src, dst) == nil {
+			return name
+		}
+		return ""
 	}
 	in, err := os.Open(src)
 	if err != nil {
 		return ""
 	}
 	defer in.Close()
-	var img image.Image
-	if strings.EqualFold(filepath.Ext(src), ".jpg") || strings.EqualFold(filepath.Ext(src), ".jpeg") {
-		img, err = jpeg.Decode(in)
-	} else {
-		img, _, err = image.Decode(in)
-	}
+	img, _, err := image.Decode(in) // jpeg + png decoders registered via imports
 	if err != nil {
 		return ""
 	}
@@ -312,7 +332,15 @@ func ensurePNGCover(src, dir string) string {
 		os.Remove(dst)
 		return ""
 	}
-	return dst
+	return name
+}
+
+func copyFile(src, dst string) error {
+	b, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, b, 0o644)
 }
 
 // ─── Apply: elevated copy + service restart, with streamed log ───────────
@@ -338,7 +366,7 @@ func gsDir() string {
 // path (C:\Users\Администратор\…) → copy can't find the source → exit 1.
 // The command line is UTF-16 natively, so Cyrillic paths survive. `chcp
 // 65001` makes net/copy output land in the log as readable UTF-8.
-func applyElevated(dst string, data []byte, emit Emit) error {
+func applyElevated(dst string, data []byte, coverCmd, coverLabel string, emit Emit) error {
 	dir := gsDir()
 	staged := filepath.Join(dir, "sunshine-apps.staged.json")
 	logPath := filepath.Join(dir, "sunshine-apply.log")
@@ -349,17 +377,20 @@ func applyElevated(dst string, data []byte, emit Emit) error {
 	}
 	defer os.Remove(staged)
 
-	// ASCII step echoes for clean progress; the && after copy makes a copy
-	// failure propagate as the group's (non-zero) exit code.
+	// ASCII step echoes for clean progress; the && after the apps.json copy
+	// makes a copy failure propagate as the group's (non-zero) exit code.
+	// The cover step (copy/del gs_*.png in assets) is best-effort — games
+	// still work without art, so it doesn't gate the rest.
 	cmdline := fmt.Sprintf(
 		`/c chcp 65001>nul & ( `+
-			`(echo [1/5] Copy apps.json& copy /Y "%s" "%s") && `+
-			`(echo [2/5] Stop %s& net stop %s& `+
-			`echo [3/5] Kill leftover sunshine.exe& taskkill /f /im sunshine.exe >nul 2>&1& `+
-			`echo [4/5] Start %s& net start %s& `+
-			`echo [5/5] DONE) `+
+			`(echo [1/6] Copy apps.json& copy /Y "%s" "%s") && `+
+			`(echo [2/6] %s& %s& `+
+			`echo [3/6] Stop %s& net stop %s& `+
+			`echo [4/6] Kill leftover sunshine.exe& taskkill /f /im sunshine.exe >nul 2>&1& `+
+			`echo [5/6] Start %s& net start %s& `+
+			`echo [6/6] DONE) `+
 			`) > "%s" 2>&1`,
-		staged, dst, serviceName, serviceName, serviceName, serviceName, logPath)
+		staged, dst, coverLabel, coverCmd, serviceName, serviceName, serviceName, serviceName, logPath)
 
 	emit("Применяю изменения — подтверди UAC…")
 	hProc, err := shellRunAs("cmd.exe", cmdline)

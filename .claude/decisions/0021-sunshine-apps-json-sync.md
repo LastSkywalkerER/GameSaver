@@ -24,10 +24,13 @@ games**; when Sunshine isn't found the block is rendered dimmed/disabled ("не 
   Wake II"). Sync now writes `[Desktop, ...ourGames]`: it keeps only the special **Desktop** entry
   (so desktop streaming still works) and drops everything else. Clear resets to `[Desktop]`. The
   managed-names sidecar from v0.8.0 was removed — we own the whole file now.
-- **image-path → PNG (revised after v0.8.0).** Moonlight reliably renders only PNG box art, but ~80%
-  of our cached covers are JPG, so they didn't show. We transcode each cover to PNG into
-  `cache\sunshine-art\` and point image-path at the absolute PNG (PNG covers are used as-is). Decode
-  failure → no box art for that entry rather than a failed sync.
+- **image-path → PNG copied into Sunshine's assets/ (revised after v0.8.0, again after v0.8.5).**
+  Moonlight renders only PNG box art (our cache is ~80% JPG), AND Sunshine only reliably serves box
+  art referenced by **bare filename resolved against its `assets/` dir** — absolute paths to arbitrary
+  folders (e.g. our `%LOCALAPPDATA%\…\sunshine-art\x.png`) didn't render even though the files existed
+  and were readable. So we transcode each cover to `gs_<base>.png` in a staging dir, the elevated
+  apply copies `gs_*.png` into `<install>\assets\`, and image-path is the bare `gs_<base>.png`. Clear
+  deletes `assets\gs_*.png`. (Matches exactly how Sunshine's own cover-finder works.)
 - **Elevated write.** On a default install `apps.json` is in `Program Files` (Users have RX, not W).
   We stage the merged file to `%LOCALAPPDATA%\GameSaver\` (no admin) then do a single UAC-elevated
   `cmd /c copy` (ShellExecuteEx `runas`), waiting on the process + checking its exit code so a
