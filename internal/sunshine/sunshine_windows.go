@@ -327,15 +327,21 @@ func gsDir() string {
 	return d
 }
 
-// applyElevated stages the new apps.json, then runs ONE elevated batch that
+// applyElevated stages the new apps.json, then runs ONE elevated cmd that
 // copies it into place and restarts SunshineService robustly (stop → kill
-// orphan sunshine.exe that would otherwise hold the port → start → verify).
-// The batch logs each step to a file; we tail it and stream lines via emit.
+// orphan sunshine.exe that would otherwise hold the port → start). The
+// command logs each step to a file; we tail it and stream lines via emit.
+//
+// CRITICAL: we pass the command INLINE via ShellExecuteEx's lpParameters
+// (UTF-16) rather than writing a .bat file. cmd.exe reads .bat files in the
+// console OEM codepage, which mangles the Cyrillic in the staged file's
+// path (C:\Users\Администратор\…) → copy can't find the source → exit 1.
+// The command line is UTF-16 natively, so Cyrillic paths survive. `chcp
+// 65001` makes net/copy output land in the log as readable UTF-8.
 func applyElevated(dst string, data []byte, emit Emit) error {
 	dir := gsDir()
 	staged := filepath.Join(dir, "sunshine-apps.staged.json")
 	logPath := filepath.Join(dir, "sunshine-apply.log")
-	batPath := filepath.Join(dir, "sunshine-apply.bat")
 	_ = os.Remove(logPath)
 
 	if err := os.WriteFile(staged, data, 0o644); err != nil {
@@ -343,28 +349,20 @@ func applyElevated(dst string, data []byte, emit Emit) error {
 	}
 	defer os.Remove(staged)
 
-	bat := "@echo off\r\n(\r\n" +
-		"echo [1/5] Копирую apps.json\r\n" +
-		fmt.Sprintf("copy /Y \"%s\" \"%s\"\r\n", staged, dst) +
-		"if errorlevel 1 ( echo ОШИБКА: copy не удался & exit /b 1 )\r\n" +
-		fmt.Sprintf("echo [2/5] Останавливаю %s\r\n", serviceName) +
-		fmt.Sprintf("net stop %s\r\n", serviceName) +
-		"echo [3/5] Закрываю остаточные процессы sunshine.exe\r\n" +
-		"taskkill /f /im sunshine.exe >nul 2>&1\r\n" +
-		"timeout /t 1 /nobreak >nul\r\n" +
-		fmt.Sprintf("echo [4/5] Запускаю %s\r\n", serviceName) +
-		fmt.Sprintf("net start %s\r\n", serviceName) +
-		"timeout /t 2 /nobreak >nul\r\n" +
-		"echo [5/5] Проверяю статус\r\n" +
-		fmt.Sprintf("sc query %s | find \"RUNNING\" >nul && (echo Sunshine запущен) || (echo ВНИМАНИЕ: Sunshine не запущен)\r\n", serviceName) +
-		"echo ГОТОВО\r\n" +
-		fmt.Sprintf(") > \"%s\" 2>&1\r\n", logPath)
-	if err := os.WriteFile(batPath, []byte(bat), 0o644); err != nil {
-		return err
-	}
+	// ASCII step echoes for clean progress; the && after copy makes a copy
+	// failure propagate as the group's (non-zero) exit code.
+	cmdline := fmt.Sprintf(
+		`/c chcp 65001>nul & ( `+
+			`(echo [1/5] Copy apps.json& copy /Y "%s" "%s") && `+
+			`(echo [2/5] Stop %s& net stop %s& `+
+			`echo [3/5] Kill leftover sunshine.exe& taskkill /f /im sunshine.exe >nul 2>&1& `+
+			`echo [4/5] Start %s& net start %s& `+
+			`echo [5/5] DONE) `+
+			`) > "%s" 2>&1`,
+		staged, dst, serviceName, serviceName, serviceName, serviceName, logPath)
 
 	emit("Применяю изменения — подтверди UAC…")
-	hProc, err := shellRunAs("cmd.exe", fmt.Sprintf(`/c "%s"`, batPath))
+	hProc, err := shellRunAs("cmd.exe", cmdline)
 	if err != nil {
 		return fmt.Errorf("эскалация отклонена/не удалась: %w", err)
 	}
@@ -396,8 +394,7 @@ func tailEmit(logPath string, off int64, emit Emit) int64 {
 		return off
 	}
 	chunk := b[off:]
-	// decode from the console OEM-ish bytes is messy; the batch echoes are
-	// ASCII tags ([n/5]) + cyrillic — emit raw, the UI shows what it can.
+	// Log is UTF-8 (chcp 65001), echoes are ASCII [n/5] tags — emit raw.
 	text := string(chunk)
 	last := strings.LastIndexByte(text, '\n')
 	if last < 0 {
