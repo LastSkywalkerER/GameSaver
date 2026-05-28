@@ -322,6 +322,44 @@ export namespace main {
 	        this.checkboxHidden = source["checkboxHidden"];
 	    }
 	}
+	export class MonitorPickPrep {
+	    monitors: display.Monitor[];
+	    vx: number;
+	    vy: number;
+	    vw: number;
+	    vh: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MonitorPickPrep(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.monitors = this.convertValues(source["monitors"], display.Monitor);
+	        this.vx = source["vx"];
+	        this.vy = source["vy"];
+	        this.vw = source["vw"];
+	        this.vh = source["vh"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ShellModeStatus {
 	    watchdogPresent: boolean;
 	    registered: boolean;

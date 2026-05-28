@@ -20,6 +20,8 @@ export function BackupAll():Promise<number>;
 
 export function BackupGame(arg1:string):Promise<Array<domain.Snapshot>>;
 
+export function CancelMonitorPick():Promise<void>;
+
 export function CheckForUpdate():Promise<updater.UpdateInfo>;
 
 export function ClearManifestOverride(arg1:string):Promise<void>;
@@ -33,6 +35,8 @@ export function DeleteSnapshot(arg1:string):Promise<void>;
 export function DisableShellMode():Promise<void>;
 
 export function EnableShellMode():Promise<void>;
+
+export function FinishMonitorPick(arg1:string):Promise<void>;
 
 export function GetAutoLoginStatus():Promise<main.AutoLoginStatus>;
 
@@ -67,6 +71,8 @@ export function OpenBackupFolder():Promise<void>;
 export function OpenWindowsSoundSettings():Promise<void>;
 
 export function PickFolder(arg1:string):Promise<string>;
+
+export function PrepareMonitorPick():Promise<main.MonitorPickPrep>;
 
 export function QuitApp():Promise<void>;
 

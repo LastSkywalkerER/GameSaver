@@ -7,11 +7,13 @@ import { isNavSoundEnabled, playSelect, setNavSoundEnabled } from "../../sound";
 import { useState } from "react";
 
 export function CornerIcons({
+  onSwitchMonitor,
   onPower,
   onSettings,
   onBackups,
   onExit,
 }: {
+  onSwitchMonitor: () => void;
   onPower: () => void;
   onSettings: () => void;
   onBackups: () => void;
@@ -32,6 +34,7 @@ export function CornerIcons({
       <IconButton title={sound ? "Звук вкл — выключить" : "Звук выкл — включить"} onClick={toggleSound}>
         {sound ? "🔊" : "🔇"}
       </IconButton>
+      <IconButton title="Сменить монитор" onClick={onSwitchMonitor}>🖥</IconButton>
       <IconButton title="Бэкапы" onClick={onBackups}>⛁</IconButton>
       <IconButton title="Настройки" onClick={onSettings}>⚙</IconButton>
       <IconButton title="Питание (Lock / Sleep / Exit) — X на геймпаде" onClick={onPower}>⏻</IconButton>

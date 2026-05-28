@@ -18,11 +18,24 @@ type Action = {
   run: () => void | Promise<void>;
 };
 
-export function PowerMenu({ onClose, onExit }: { onClose: () => void; onExit: () => void }) {
+export function PowerMenu({
+  onClose,
+  onExit,
+  onSwitchMonitor,
+}: {
+  onClose: () => void;
+  onExit: () => void;
+  onSwitchMonitor: () => void;
+}) {
   const [active, setActive] = useState(0);
   const lastMove = useRef(0);
 
   const actions: Action[] = [
+    {
+      key: "monitor", icon: "🖥", label: "Сменить монитор",
+      desc: "Снова покажет выбор активного монитора на всех экранах.",
+      run: () => { onClose(); onSwitchMonitor(); },
+    },
     {
       key: "lock", icon: "🔒", label: "Заблокировать",
       desc: "Выкинет на экран выбора пользователя. GameSaver продолжит работать в фоне.",
@@ -89,7 +102,7 @@ export function PowerMenu({ onClose, onExit }: { onClose: () => void; onExit: ()
       onClick={onClose}
     >
       <h1 className="mb-10 text-3xl font-semibold text-gray-100">Питание</h1>
-      <div className="grid w-full max-w-4xl grid-cols-3 gap-6" onClick={(e) => e.stopPropagation()}>
+      <div className="grid w-full max-w-5xl grid-cols-2 gap-6 md:grid-cols-4" onClick={(e) => e.stopPropagation()}>
         {actions.map((a, i) => {
           const isActive = i === active;
           const danger = a.variant === "danger";

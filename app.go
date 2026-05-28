@@ -32,6 +32,7 @@ import (
 	"GameSaver/internal/tray"
 	"GameSaver/internal/updater"
 	"GameSaver/internal/watcher"
+	"GameSaver/internal/winutil"
 )
 
 // App is the Wails-bound facade. All exported methods become callable from the
@@ -725,6 +726,75 @@ func (a *App) MakeSoleMonitor(id string) error {
 // displays in the first place).
 func (a *App) RestoreMonitorConfig() error {
 	return display.RestoreSaved()
+}
+
+// MonitorPickPrep is handed to the shell UI so it can lay out one picker
+// copy per physical monitor. Coords are physical pixels; VX/VY are the
+// virtual-desktop origin (may be negative) so the frontend can position
+// each copy with (monitor.positionX - VX, monitor.positionY - VY).
+type MonitorPickPrep struct {
+	Monitors []display.Monitor `json:"monitors"`
+	VX       int               `json:"vx"`
+	VY       int               `json:"vy"`
+	VW       int               `json:"vw"`
+	VH       int               `json:"vh"`
+}
+
+// PrepareMonitorPick gets the system ready to show the picker on EVERY
+// physical screen:
+//  1. Re-enables any monitor a prior MakeSole disabled — critical for the
+//     post-sleep case where we'd narrowed to one screen that then went
+//     dark; without this the picker could only appear on the dead screen.
+//  2. Spans our window across the whole virtual desktop so a picker copy
+//     can be drawn on each monitor.
+// Returns the fresh monitor list + virtual-screen rect.
+func (a *App) PrepareMonitorPick() (*MonitorPickPrep, error) {
+	_ = display.RestoreSaved() // best-effort re-enable
+	vx, vy, vw, vh := winutil.SpanVirtualScreen()
+	mons, err := display.List()
+	if err != nil {
+		return nil, err
+	}
+	return &MonitorPickPrep{Monitors: mons, VX: vx, VY: vy, VW: vw, VH: vh}, nil
+}
+
+// FinishMonitorPick narrows to the chosen monitor and snaps our (now
+// virtual-desktop-spanning) window back onto it. After MakeSole the
+// chosen display becomes primary at (0,0), so that's where we move.
+func (a *App) FinishMonitorPick(id string) error {
+	if err := display.MakeSole(id); err != nil {
+		return err
+	}
+	mons, err := display.List()
+	if err == nil {
+		for _, m := range mons {
+			if m.ID == id {
+				winutil.MoveToRect(0, 0, m.Width, m.Height)
+				break
+			}
+		}
+	}
+	return nil
+}
+
+// CancelMonitorPick is the "skip" path: leave every monitor enabled and
+// just pull our window back onto the primary so it's not left spanning
+// the whole desktop.
+func (a *App) CancelMonitorPick() error {
+	mons, err := display.List()
+	if err != nil {
+		return err
+	}
+	for _, m := range mons {
+		if m.IsPrimary {
+			winutil.MoveToRect(m.PositionX, m.PositionY, m.Width, m.Height)
+			return nil
+		}
+	}
+	if len(mons) > 0 {
+		winutil.MoveToRect(mons[0].PositionX, mons[0].PositionY, mons[0].Width, mons[0].Height)
+	}
+	return nil
 }
 
 // ===== Windows passwordless auto-logon helper =====

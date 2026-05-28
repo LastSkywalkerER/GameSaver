@@ -22,7 +22,7 @@ import { CornerIcons } from "./CornerIcons";
 import { GameCarousel } from "./GameCarousel";
 import { HeroPanel } from "./HeroPanel";
 import { ShellBackground } from "./ShellBackground";
-import { MonitorPicker, type Monitor } from "./MonitorPicker";
+import { MonitorPicker, type Monitor, type PickPrep } from "./MonitorPicker";
 import { PowerMenu } from "./PowerMenu";
 
 type Overlay = "none" | "details" | "settings" | "backups" | "power";
@@ -50,52 +50,39 @@ export function ShellApp({
   const [overlay, setOverlay] = useState<Overlay>("none");
   const padOn = useControllerConnected();
 
-  // Monitor picker — on first ShellApp mount we ask the OS how many
-  // displays are attached. If 2+, we show the picker overlay. The user's
-  // previous choice (per gs:soleMonitorId in localStorage) is auto-applied
-  // silently — they only see the picker once unless they explicitly clear
-  // it. If only 1 monitor is attached we skip entirely.
-  const [monitorsToPick, setMonitorsToPick] = useState<Monitor[] | null>(null);
+  // Monitor picker. We deliberately show it on EVERY shell launch (and on
+  // demand via the power menu / corner icon) rather than silently
+  // re-applying a remembered choice — because after sleep a monitor can go
+  // dark while still "attached", and a silent re-apply would land the UI
+  // on the dead screen with no way out. PrepareMonitorPick re-enables all
+  // displays and spans our window across the whole virtual desktop, so the
+  // picker is visible on whatever screen is actually lit.
+  const [pickPrep, setPickPrep] = useState<PickPrep | null>(null);
+  const pickerOpen = pickPrep !== null;
 
-  // Initial check at mount + re-check on every hot-plug ("display:changed").
-  // Logic: if there's a remembered choice AND it's still in the active list,
-  // silently re-apply (typical case: power-on, single-monitor steady state).
-  // Otherwise, surface the picker so the user can choose.
-  useEffect(() => {
-    let cancelled = false;
-
-    async function evaluate(mons: Monitor[]) {
-      if (cancelled) return;
-      if (!Array.isArray(mons) || mons.length < 2) {
-        setMonitorsToPick(null);
-        return;
+  const openPicker = useCallback(async () => {
+    try {
+      const prep: any = await api.PrepareMonitorPick();
+      if (prep && Array.isArray(prep.monitors) && prep.monitors.length >= 2) {
+        setPickPrep(prep as PickPrep);
+      } else {
+        // Only one display — nothing to choose. Make sure the window is
+        // back on it (PrepareMonitorPick may have spanned us).
+        try { await api.CancelMonitorPick(); } catch {}
+        setPickPrep(null);
       }
-      const remembered = (() => { try { return localStorage.getItem("gs:soleMonitorId") || ""; } catch { return ""; } })();
-      if (remembered && mons.some((m) => m.id === remembered)) {
-        // Re-apply silently — user already picked this, no need to ask again.
-        try { await api.MakeSoleMonitor(remembered); } catch (e) { console.warn("re-apply monitor failed", e); }
-        setMonitorsToPick(null);
-        return;
-      }
-      // Either no remembered choice, or it's gone (e.g. the monitor was
-      // unplugged) — reopen the picker.
-      setMonitorsToPick(mons);
+    } catch (e) {
+      console.warn("PrepareMonitorPick failed", e);
     }
-
-    (async () => {
-      try { const mons: any = await api.ListMonitors(); await evaluate(mons as Monitor[]); }
-      catch (e) { console.warn("ListMonitors failed", e); }
-    })();
-
-    const off = EventsOn("display:changed", (payload: any) => {
-      // payload is the new monitor list — saves us another round-trip.
-      evaluate(payload as Monitor[]);
-    });
-    return () => {
-      cancelled = true;
-      try { (off as any)?.(); } catch {}
-    };
   }, []);
+
+  // Show on mount, and re-show whenever the display topology changes
+  // (monitor plugged/unplugged, or one woke/slept).
+  useEffect(() => {
+    openPicker();
+    const off = EventsOn("display:changed", () => { openPicker(); });
+    return () => { try { (off as any)?.(); } catch {} };
+  }, [openPicker]);
 
   // Keep activeIdx in range when the list shrinks (e.g. a hidden flag flips).
   useEffect(() => {
@@ -119,7 +106,7 @@ export function ShellApp({
   // While the monitor picker is up, every input goes to it — otherwise a
   // d-pad left in the picker would also shift the carousel cursor behind
   // it, and A would launch a game instead of confirming the picker.
-  const inputBlocked = overlay !== "none" || monitorsToPick !== null;
+  const inputBlocked = overlay !== "none" || pickerOpen;
   useControllerNav((dir) => {
     if (inputBlocked) return;
     if (dir === "left")  moveCursor(-1);
@@ -127,7 +114,7 @@ export function ShellApp({
   });
 
   useControllerButton((btn) => {
-    if (monitorsToPick !== null) return; // picker owns the controller
+    if (pickerOpen) return; // picker owns the controller
     if (overlay !== "none") {
       if (btn === "b") {
         playBack();
@@ -164,7 +151,7 @@ export function ShellApp({
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
-      if (monitorsToPick !== null) return; // picker owns the keyboard
+      if (pickerOpen) return; // picker owns the keyboard
       if (overlay !== "none") {
         if (e.key === "Escape") { e.preventDefault(); playBack(); setOverlay("none"); }
         return;
@@ -183,7 +170,7 @@ export function ShellApp({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [overlay, active, moveCursor, monitorsToPick]);
+  }, [overlay, active, moveCursor, pickerOpen]);
 
   // ── Mouse-wheel navigation ──────────────────────────────────────────
   // One wheel notch (or one trackpad scroll-step) advances the carousel
@@ -192,7 +179,7 @@ export function ShellApp({
   const wheelLockRef = useRef(0);
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (overlay !== "none" || monitorsToPick !== null) return;
+      if (overlay !== "none" || pickerOpen) return;
       const now = Date.now();
       if (now - wheelLockRef.current < 150) return;
       // deltaY > 0 = scroll down/forward → next tile.
@@ -205,7 +192,7 @@ export function ShellApp({
     };
     window.addEventListener("wheel", onWheel, { passive: true });
     return () => window.removeEventListener("wheel", onWheel);
-  }, [overlay, moveCursor, monitorsToPick]);
+  }, [overlay, moveCursor, pickerOpen]);
 
   async function doLaunch(g: GameView) {
     playSelect();
@@ -255,6 +242,7 @@ export function ShellApp({
       </div>
 
       <CornerIcons
+        onSwitchMonitor={() => { playSelect(); openPicker(); }}
         onPower={() => { playSelect(); setOverlay("power"); }}
         onSettings={() => { playSelect(); setOverlay("settings"); }}
         onBackups={() => { playSelect(); setOverlay("backups"); }}
@@ -306,16 +294,17 @@ export function ShellApp({
         </div>
       </Modal>
 
-      {monitorsToPick && (
+      {pickPrep && (
         <MonitorPicker
-          monitors={monitorsToPick}
-          onDone={() => setMonitorsToPick(null)}
+          prep={pickPrep}
+          onDone={() => setPickPrep(null)}
         />
       )}
 
       {overlay === "power" && (
         <PowerMenu
           onClose={() => setOverlay("none")}
+          onSwitchMonitor={() => openPicker()}
           onExit={async () => {
             try { await api.RestoreMonitorConfig(); } catch (e) { console.warn("restore monitors", e); }
             try { localStorage.removeItem("gs:soleMonitorId"); } catch {}

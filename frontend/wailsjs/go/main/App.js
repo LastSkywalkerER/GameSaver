@@ -22,6 +22,10 @@ export function BackupGame(arg1) {
   return window['go']['main']['App']['BackupGame'](arg1);
 }
 
+export function CancelMonitorPick() {
+  return window['go']['main']['App']['CancelMonitorPick']();
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
@@ -48,6 +52,10 @@ export function DisableShellMode() {
 
 export function EnableShellMode() {
   return window['go']['main']['App']['EnableShellMode']();
+}
+
+export function FinishMonitorPick(arg1) {
+  return window['go']['main']['App']['FinishMonitorPick'](arg1);
 }
 
 export function GetAutoLoginStatus() {
@@ -116,6 +124,10 @@ export function OpenWindowsSoundSettings() {
 
 export function PickFolder(arg1) {
   return window['go']['main']['App']['PickFolder'](arg1);
+}
+
+export function PrepareMonitorPick() {
+  return window['go']['main']['App']['PrepareMonitorPick']();
 }
 
 export function QuitApp() {
