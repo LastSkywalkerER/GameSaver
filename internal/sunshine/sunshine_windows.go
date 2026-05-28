@@ -1,25 +1,17 @@
-// Package sunshine integrates with the Sunshine game-streaming host
-// (https://github.com/LizardByte/Sunshine). It can sync GameSaver's
-// library into Sunshine's apps.json (so the games show up in Moonlight
-// with cover art) and remove the entries it added.
+// Package sunshine integrates with the Sunshine game-streaming host.
+// It overwrites Sunshine's apps.json with GameSaver's library (GameSaver
+// IS the menu, so the old list isn't worth keeping — we only retain the
+// special "Desktop" entry so desktop streaming still works), then restarts
+// SunshineService so the change is actually picked up.
 //
-// Sunshine's apps.json is the registry of streamable apps. Each entry:
+// Box art: Moonlight reliably renders only PNG box art, and most of our
+// cached covers are JPG, so we transcode each cover to PNG into
+// cache\sunshine-art\ and point image-path there.
 //
-//	{
-//	  "name": "Cyberpunk 2077",
-//	  "cmd": "\"H:\\Games\\...\\Cyberpunk2077.exe\"",   // or a steam:// / epic deep-link
-//	  "working-dir": "\"H:\\Games\\...\"",
-//	  "image-path": "<abs path or filename under assets/>",
-//	  "auto-detach": "true", "wait-all": "true", "exit-timeout": "5", ...
-//	}
-//
-// On a default Windows install apps.json lives under
-// %ProgramFiles%\Sunshine\config\, which is NOT user-writable — so the
-// write goes through a one-shot UAC-elevated copy (see writeElevated).
-//
-// We never clobber the user's own entries (Desktop, Steam Big Picture,
-// anything they added by hand): we track the names WE added in a sidecar
-// file and only ever add/refresh/remove those.
+// apps.json lives in Program Files (Users have RX, not W) and the service
+// restart needs admin too, so the whole apply is one UAC-elevated batch
+// (copy → stop → kill stragglers → start → verify) that logs each step to
+// a file we tail and stream to the UI as progress events.
 package sunshine
 
 import (
@@ -27,6 +19,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,30 +29,28 @@ import (
 	"unsafe"
 )
 
-// Status is the snapshot the Settings UI polls.
 type Status struct {
-	Installed bool   `json:"installed"`           // sunshine.exe found
-	AppsPath  string `json:"appsPath"`            // resolved apps.json path
-	Managed   int    `json:"managed"`             // entries we currently manage
-	NeedsAdmin bool  `json:"needsAdmin"`          // apps.json isn't user-writable → UAC on sync
+	Installed bool   `json:"installed"`
+	AppsPath  string `json:"appsPath"`
+	Managed   int    `json:"managed"` // games currently registered (apps minus Desktop)
 }
 
-// SyncGame is the minimal per-game input the caller (app.go) builds from a
-// GameView. CoverAbsPath is an absolute path to a cover image on disk (or "").
 type SyncGame struct {
 	Name         string
 	Exe          string
 	WorkingDir   string
 	LaunchURI    string
 	Source       string
-	CoverAbsPath string
+	CoverAbsPath string // jpg or png on disk; "" if none
 }
+
+// Emit streams a human-readable progress line to the UI.
+type Emit func(line string)
+
+const serviceName = "SunshineService"
 
 // ─── Detection ─────────────────────────────────────────────────────────
 
-// Detect locates the Sunshine install + its apps.json. Installed is true if
-// sunshine.exe is found; AppsPath is the best-guess apps.json location even
-// if it doesn't exist yet.
 func Detect() Status {
 	exe, ok := findSunshineExe()
 	if !ok {
@@ -65,36 +58,30 @@ func Detect() Status {
 	}
 	apps := resolveAppsPath(exe)
 	st := Status{Installed: true, AppsPath: apps}
-	st.NeedsAdmin = !pathWritable(apps)
-	if names, err := loadManaged(); err == nil {
-		st.Managed = len(names)
+	if f, err := readApps(apps); err == nil {
+		for _, a := range f.Apps {
+			if !strings.EqualFold(appName(a), "Desktop") {
+				st.Managed++
+			}
+		}
 	}
 	return st
 }
 
 func findSunshineExe() (string, bool) {
-	cands := []string{}
 	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)"} {
 		if p := os.Getenv(env); p != "" {
-			cands = append(cands, filepath.Join(p, "Sunshine", "sunshine.exe"))
-		}
-	}
-	for _, c := range cands {
-		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
-			return c, true
+			c := filepath.Join(p, "Sunshine", "sunshine.exe")
+			if fileExists(c) {
+				return c, true
+			}
 		}
 	}
 	return "", false
 }
 
-// resolveAppsPath returns where apps.json should be. Order:
-//  1. file_apps override in sunshine.conf, if set
-//  2. <install>\config\apps.json (legacy / portable — this machine)
-//  3. %PROGRAMDATA%\Sunshine\config\apps.json (newer service installs)
 func resolveAppsPath(exe string) string {
-	installDir := filepath.Dir(exe)
-	confDir := filepath.Join(installDir, "config")
-
+	confDir := filepath.Join(filepath.Dir(exe), "config")
 	if conf := filepath.Join(confDir, "sunshine.conf"); fileExists(conf) {
 		if p := readConfFileApps(conf); p != "" {
 			if !filepath.IsAbs(p) {
@@ -111,7 +98,6 @@ func resolveAppsPath(exe string) string {
 			return newer
 		}
 	}
-	// Default to the legacy location even if not present yet.
 	return filepath.Join(confDir, "apps.json")
 }
 
@@ -131,7 +117,7 @@ func readConfFileApps(conf string) string {
 	return ""
 }
 
-// ─── apps.json model (preserves unknown fields of user entries) ──────────
+// ─── apps.json model ─────────────────────────────────────────────────────
 
 type appsFile struct {
 	Env  json.RawMessage          `json:"env"`
@@ -157,11 +143,9 @@ func readApps(path string) (*appsFile, error) {
 }
 
 func marshalApps(f *appsFile) ([]byte, error) {
-	// SetEscapeHTML(false) so deep-link URIs keep their literal "&"
-	// (?action=launch&silent=true) instead of "&".
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
+	enc.SetEscapeHTML(false) // keep deep-link "&" literal
 	enc.SetIndent("", "    ")
 	if err := enc.Encode(f); err != nil {
 		return nil, err
@@ -176,110 +160,76 @@ func appName(a map[string]interface{}) string {
 	return ""
 }
 
-// ─── Sync / Clear ────────────────────────────────────────────────────────
+// desktopEntry returns the existing Desktop app from the file, or a default.
+func desktopEntry(f *appsFile) map[string]interface{} {
+	for _, a := range f.Apps {
+		if strings.EqualFold(appName(a), "Desktop") {
+			return a
+		}
+	}
+	return map[string]interface{}{"name": "Desktop", "image-path": "desktop.png"}
+}
 
-// Sync upserts every game into apps.json (by name) and records the names
-// in the managed sidecar. User-authored entries are left untouched.
-// Returns how many GameSaver entries are now present.
-func Sync(games []SyncGame) (int, error) {
+// ─── Sync / Clear (full replace) ─────────────────────────────────────────
+
+// Sync overwrites apps.json with [Desktop, ...games] and restarts Sunshine.
+func Sync(games []SyncGame, emit Emit) error {
+	if emit == nil {
+		emit = func(string) {}
+	}
 	st := Detect()
 	if !st.Installed {
-		return 0, errors.New("Sunshine not detected")
+		return errors.New("Sunshine не обнаружен")
 	}
-	f, err := readApps(st.AppsPath)
-	if err != nil {
-		return 0, err
-	}
+	emit(fmt.Sprintf("Собираю список: %d игр", len(games)))
 
-	prev, _ := loadManaged()
-	cur := make([]string, 0, len(games))
-	curSet := map[string]bool{}
+	prev, err := readApps(st.AppsPath)
+	if err != nil {
+		return err
+	}
+	out := &appsFile{Env: prev.Env, Apps: []map[string]interface{}{desktopEntry(prev)}}
+
+	emit("Готовлю обложки (PNG)…")
+	artDir := artDir()
+	_ = os.MkdirAll(artDir, 0o755)
 	for _, g := range games {
 		if g.Name == "" {
 			continue
 		}
-		cur = append(cur, g.Name)
-		curSet[g.Name] = true
-	}
-	remove := map[string]bool{}
-	for _, n := range prev {
-		remove[n] = true
-	}
-	for n := range curSet {
-		remove[n] = true
+		out.Apps = append(out.Apps, buildEntry(g, artDir))
 	}
 
-	// Keep everything that isn't ours-now / ours-before.
-	kept := f.Apps[:0]
-	for _, a := range f.Apps {
-		if !remove[appName(a)] {
-			kept = append(kept, a)
-		}
-	}
-	f.Apps = kept
-	for _, g := range games {
-		if g.Name == "" {
-			continue
-		}
-		f.Apps = append(f.Apps, buildEntry(g))
-	}
-
-	data, err := marshalApps(f)
+	data, err := marshalApps(out)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	if err := writeApps(st.AppsPath, data, st.NeedsAdmin); err != nil {
-		return 0, err
-	}
-	_ = saveManaged(cur)
-	return len(cur), nil
+	emit(fmt.Sprintf("Записываю apps.json (%d записей)…", len(out.Apps)))
+	return applyElevated(st.AppsPath, data, emit)
 }
 
-// Clear removes only the entries GameSaver added (per the sidecar) and
-// empties the sidecar. Returns how many were removed.
-func Clear() (int, error) {
+// Clear resets apps.json to just the Desktop entry and restarts Sunshine.
+func Clear(emit Emit) error {
+	if emit == nil {
+		emit = func(string) {}
+	}
 	st := Detect()
 	if !st.Installed {
-		return 0, errors.New("Sunshine not detected")
+		return errors.New("Sunshine не обнаружен")
 	}
-	prev, _ := loadManaged()
-	if len(prev) == 0 {
-		return 0, nil
-	}
-	remove := map[string]bool{}
-	for _, n := range prev {
-		remove[n] = true
-	}
-	f, err := readApps(st.AppsPath)
+	prev, err := readApps(st.AppsPath)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	before := len(f.Apps)
-	kept := f.Apps[:0]
-	for _, a := range f.Apps {
-		if !remove[appName(a)] {
-			kept = append(kept, a)
-		}
-	}
-	f.Apps = kept
-	removed := before - len(f.Apps)
-
-	data, err := marshalApps(f)
+	out := &appsFile{Env: prev.Env, Apps: []map[string]interface{}{desktopEntry(prev)}}
+	data, err := marshalApps(out)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	if err := writeApps(st.AppsPath, data, st.NeedsAdmin); err != nil {
-		return 0, err
-	}
-	_ = saveManaged(nil)
-	return removed, nil
+	emit("Очищаю список (оставляю только Desktop)…")
+	return applyElevated(st.AppsPath, data, emit)
 }
 
-// buildEntry mirrors internal/launcher's priority: Steam prefers its
-// deep-link; everyone else prefers the bare exe; deep-link only as a
-// fallback. auto-detach=true so Sunshine returns to the stream after the
-// launcher hands off (matches how the user's existing entries are set).
-func buildEntry(g SyncGame) map[string]interface{} {
+func buildEntry(g SyncGame, artDir string) map[string]interface{} {
 	e := map[string]interface{}{
 		"name":                    g.Name,
 		"output":                  "",
@@ -288,9 +238,6 @@ func buildEntry(g SyncGame) map[string]interface{} {
 		"wait-all":                "true",
 		"exit-timeout":            "5",
 		"exclude-global-prep-cmd": "false",
-		// Best-effort marker; the sidecar is the real source of truth since
-		// Sunshine's Web UI may drop unknown fields on its own saves.
-		"gamesaver-managed": "true",
 	}
 	switch {
 	case g.Source == "steam" && g.LaunchURI != "":
@@ -303,8 +250,8 @@ func buildEntry(g SyncGame) map[string]interface{} {
 	case g.LaunchURI != "":
 		e["cmd"] = g.LaunchURI
 	}
-	if g.CoverAbsPath != "" {
-		e["image-path"] = g.CoverAbsPath
+	if png := ensurePNGCover(g.CoverAbsPath, artDir); png != "" {
+		e["image-path"] = png
 	}
 	return e
 }
@@ -316,82 +263,159 @@ func quote(s string) string {
 	return `"` + s + `"`
 }
 
-// ─── Managed-names sidecar (%LOCALAPPDATA%\GameSaver\sunshine-managed.json) ─
+// ─── Cover → PNG ──────────────────────────────────────────────────────────
 
-func managedPath() string {
+func artDir() string {
 	base := os.Getenv("LOCALAPPDATA")
 	if base == "" {
 		base = os.TempDir()
 	}
-	return filepath.Join(base, "GameSaver", "sunshine-managed.json")
+	return filepath.Join(base, "GameSaver", "cache", "sunshine-art")
 }
 
-func loadManaged() ([]string, error) {
-	b, err := os.ReadFile(managedPath())
+// ensurePNGCover returns a PNG path for the cover. PNG sources are used
+// as-is; JPG (the majority of our cache) is transcoded once into artDir.
+// Returns "" if there's no cover or it can't be decoded (entry then has no
+// box art rather than failing the whole sync).
+func ensurePNGCover(src, dir string) string {
+	if src == "" {
+		return ""
+	}
+	if strings.EqualFold(filepath.Ext(src), ".png") {
+		return src
+	}
+	// Transcode JPG → PNG. Name by source base so re-syncs reuse the file.
+	dst := filepath.Join(dir, strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))+".png")
+	if fileExists(dst) {
+		return dst
+	}
+	in, err := os.Open(src)
 	if err != nil {
-		return nil, err
+		return ""
 	}
-	var names []string
-	if err := json.Unmarshal(b, &names); err != nil {
-		return nil, err
+	defer in.Close()
+	var img image.Image
+	if strings.EqualFold(filepath.Ext(src), ".jpg") || strings.EqualFold(filepath.Ext(src), ".jpeg") {
+		img, err = jpeg.Decode(in)
+	} else {
+		img, _, err = image.Decode(in)
 	}
-	return names, nil
+	if err != nil {
+		return ""
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		return ""
+	}
+	defer out.Close()
+	if err := png.Encode(out, img); err != nil {
+		os.Remove(dst)
+		return ""
+	}
+	return dst
 }
 
-func saveManaged(names []string) error {
-	p := managedPath()
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return err
+// ─── Apply: elevated copy + service restart, with streamed log ───────────
+
+func gsDir() string {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		base = os.TempDir()
 	}
-	b, _ := json.MarshalIndent(names, "", "  ")
-	return os.WriteFile(p, b, 0o644)
+	d := filepath.Join(base, "GameSaver")
+	_ = os.MkdirAll(d, 0o755)
+	return d
 }
 
-// ─── Writing apps.json (direct, or UAC-elevated copy) ────────────────────
+// applyElevated stages the new apps.json, then runs ONE elevated batch that
+// copies it into place and restarts SunshineService robustly (stop → kill
+// orphan sunshine.exe that would otherwise hold the port → start → verify).
+// The batch logs each step to a file; we tail it and stream lines via emit.
+func applyElevated(dst string, data []byte, emit Emit) error {
+	dir := gsDir()
+	staged := filepath.Join(dir, "sunshine-apps.staged.json")
+	logPath := filepath.Join(dir, "sunshine-apply.log")
+	batPath := filepath.Join(dir, "sunshine-apply.bat")
+	_ = os.Remove(logPath)
 
-func writeApps(path string, data []byte, _ bool) error {
-	// We ALWAYS go through the elevated path, even if the file itself were
-	// user-writable: Sunshine keeps its app list in memory and only re-reads
-	// apps.json on (re)start, so the change is invisible to Moonlight until
-	// we restart SunshineService — and that needs admin regardless. So one
-	// UAC prompt does both: copy the staged file into place AND bounce the
-	// service so Sunshine reloads.
-	tmp := filepath.Join(filepath.Dir(managedPath()), "sunshine-apps.staged.json")
-	if err := os.MkdirAll(filepath.Dir(tmp), 0o755); err != nil {
+	if err := os.WriteFile(staged, data, 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	defer os.Remove(staged)
+
+	bat := "@echo off\r\n(\r\n" +
+		"echo [1/5] Копирую apps.json\r\n" +
+		fmt.Sprintf("copy /Y \"%s\" \"%s\"\r\n", staged, dst) +
+		"if errorlevel 1 ( echo ОШИБКА: copy не удался & exit /b 1 )\r\n" +
+		fmt.Sprintf("echo [2/5] Останавливаю %s\r\n", serviceName) +
+		fmt.Sprintf("net stop %s\r\n", serviceName) +
+		"echo [3/5] Закрываю остаточные процессы sunshine.exe\r\n" +
+		"taskkill /f /im sunshine.exe >nul 2>&1\r\n" +
+		"timeout /t 1 /nobreak >nul\r\n" +
+		fmt.Sprintf("echo [4/5] Запускаю %s\r\n", serviceName) +
+		fmt.Sprintf("net start %s\r\n", serviceName) +
+		"timeout /t 2 /nobreak >nul\r\n" +
+		"echo [5/5] Проверяю статус\r\n" +
+		fmt.Sprintf("sc query %s | find \"RUNNING\" >nul && (echo Sunshine запущен) || (echo ВНИМАНИЕ: Sunshine не запущен)\r\n", serviceName) +
+		"echo ГОТОВО\r\n" +
+		fmt.Sprintf(") > \"%s\" 2>&1\r\n", logPath)
+	if err := os.WriteFile(batPath, []byte(bat), 0o644); err != nil {
 		return err
 	}
-	defer os.Remove(tmp)
-	return installAndReload(tmp, path)
+
+	emit("Применяю изменения — подтверди UAC…")
+	hProc, err := shellRunAs("cmd.exe", fmt.Sprintf(`/c "%s"`, batPath))
+	if err != nil {
+		return fmt.Errorf("эскалация отклонена/не удалась: %w", err)
+	}
+	defer closeHandle(hProc)
+
+	// Tail the log while the elevated batch runs, emitting each new line.
+	var off int64
+	for {
+		off = tailEmit(logPath, off, emit)
+		if waitProcess(hProc, 300) { // exited
+			break
+		}
+	}
+	tailEmit(logPath, off, emit) // flush remainder
+
+	if code := exitCode(hProc); code != 0 {
+		return fmt.Errorf("apply завершился с кодом %d (см. лог)", code)
+	}
+	// Independent confirmation that the service is back.
+	emit("Готово ✅")
+	return nil
+}
+
+// tailEmit reads logPath from offset, emits complete new lines, returns the
+// new offset (leaving a partial trailing line for next time).
+func tailEmit(logPath string, off int64, emit Emit) int64 {
+	b, err := os.ReadFile(logPath)
+	if err != nil || int64(len(b)) <= off {
+		return off
+	}
+	chunk := b[off:]
+	// decode from the console OEM-ish bytes is messy; the batch echoes are
+	// ASCII tags ([n/5]) + cyrillic — emit raw, the UI shows what it can.
+	text := string(chunk)
+	last := strings.LastIndexByte(text, '\n')
+	if last < 0 {
+		return off // no complete line yet
+	}
+	complete := text[:last]
+	for _, ln := range strings.Split(complete, "\n") {
+		ln = strings.TrimRight(ln, "\r")
+		if strings.TrimSpace(ln) != "" {
+			emit(ln)
+		}
+	}
+	return off + int64(last) + 1
 }
 
 func fileExists(p string) bool { fi, err := os.Stat(p); return err == nil && !fi.IsDir() }
 
-// pathWritable probes whether we can write `path` (or create it in its dir)
-// without elevation.
-func pathWritable(path string) bool {
-	if fileExists(path) {
-		f, err := os.OpenFile(path, os.O_WRONLY, 0)
-		if err == nil {
-			f.Close()
-			return true
-		}
-		return false
-	}
-	// Try creating a temp file in the target dir.
-	probe := filepath.Join(filepath.Dir(path), ".gs-write-probe")
-	f, err := os.OpenFile(probe, os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return false
-	}
-	f.Close()
-	os.Remove(probe)
-	return true
-}
-
-// ─── ShellExecuteEx("runas") elevated copy ───────────────────────────────
+// ─── Win32 ShellExecuteEx("runas") + process wait ────────────────────────
 
 var (
 	shell32             = syscall.NewLazyDLL("shell32.dll")
@@ -422,50 +446,42 @@ type shellExecuteInfoW struct {
 
 const (
 	seeMaskNoCloseProcess = 0x00000040
-	seeMaskNoAsync        = 0x00000100
 	swHide                = 0
-	waitInfinite          = 0xFFFFFFFF
+	waitObject0           = 0x0
 )
 
-// installAndReload copies src→dst AND restarts SunshineService, both in a
-// single elevated `cmd /c` (one UAC prompt). Sunshine caches its app list,
-// so without the restart Moonlight never sees the new apps.json.
-//
-// cmd structure: the copy is grouped and gated with `&&` so a copy failure
-// is detected via exit code; the restart is best-effort (a non-service
-// Sunshine install has nothing to stop) and `ver >nul` forces the group's
-// exit code to 0 so a restart hiccup doesn't look like a write failure.
-//
-// We wait on the process + check the exit code so a cancelled UAC or a
-// failed copy doesn't get reported as success.
-func installAndReload(src, dst string) error {
+func shellRunAs(file, params string) (uintptr, error) {
 	verb, _ := syscall.UTF16PtrFromString("runas")
-	file, _ := syscall.UTF16PtrFromString("cmd.exe")
-	params, _ := syscall.UTF16PtrFromString(fmt.Sprintf(
-		`/c (copy /Y "%s" "%s") && (net stop SunshineService & net start SunshineService & ver >nul)`,
-		src, dst))
-
+	f, _ := syscall.UTF16PtrFromString(file)
+	p, _ := syscall.UTF16PtrFromString(params)
 	info := shellExecuteInfoW{
-		fMask:        seeMaskNoCloseProcess | seeMaskNoAsync,
+		fMask:        seeMaskNoCloseProcess,
 		lpVerb:       verb,
-		lpFile:       file,
-		lpParameters: params,
+		lpFile:       f,
+		lpParameters: p,
 		nShow:        swHide,
 	}
 	info.cbSize = uint32(unsafe.Sizeof(info))
 	r, _, e := procShellExecuteExW.Call(uintptr(unsafe.Pointer(&info)))
-	if r == 0 {
-		return fmt.Errorf("elevation declined or failed: %w", e)
+	if r == 0 || info.hProcess == 0 {
+		if r == 0 {
+			return 0, e
+		}
+		return 0, errors.New("no process handle")
 	}
-	if info.hProcess == 0 {
-		return nil // launched, no handle to wait on
-	}
-	defer procCloseHandle.Call(info.hProcess)
-	procWaitForSingle.Call(info.hProcess, uintptr(waitInfinite))
-	var code uint32
-	procGetExitCode.Call(info.hProcess, uintptr(unsafe.Pointer(&code)))
-	if code != 0 {
-		return fmt.Errorf("elevated copy failed (exit %d)", code)
-	}
-	return nil
+	return info.hProcess, nil
 }
+
+// waitProcess returns true if the process has exited within ms.
+func waitProcess(h uintptr, ms uint32) bool {
+	r, _, _ := procWaitForSingle.Call(h, uintptr(ms))
+	return r == waitObject0
+}
+
+func exitCode(h uintptr) uint32 {
+	var code uint32
+	procGetExitCode.Call(h, uintptr(unsafe.Pointer(&code)))
+	return code
+}
+
+func closeHandle(h uintptr) { procCloseHandle.Call(h) }

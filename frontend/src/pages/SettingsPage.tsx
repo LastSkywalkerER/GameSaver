@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { api, type AppConfig } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { api, EventsOn, type AppConfig } from "../api";
+import { Modal } from "../components/Modal";
 import { setLanguage, useT } from "../i18n";
 import { TILE_PREF_LABELS, setTilePref, useTilePrefs, type TilePrefs } from "../tilePrefs";
 import { confirmModal } from "../components/Modal";
@@ -27,8 +28,13 @@ export function SettingsPage() {
   const [reconciling, setReconciling] = useState(false);
   const [shell, setShell] = useState<ShellStatus | null>(null);
   const [shellBusy, setShellBusy] = useState(false);
-  const [sun, setSun] = useState<{ installed: boolean; appsPath: string; managed: number; needsAdmin: boolean } | null>(null);
+  const [sun, setSun] = useState<{ installed: boolean; appsPath: string; managed: number } | null>(null);
   const [sunBusy, setSunBusy] = useState(false);
+  // Live-log modal for the Sunshine apply (copy → restart service → verify).
+  const [sunModal, setSunModal] = useState(false);
+  const [sunLog, setSunLog] = useState<string[]>([]);
+  const [sunResult, setSunResult] = useState<"ok" | "err" | null>(null);
+  const sunLogEndRef = useRef<HTMLDivElement | null>(null);
   const [soundPack, setSoundPackState] = useState<SoundPack>(() => getSoundPack());
   useEffect(() => subscribeSoundPack(setSoundPackState), []);
   const tilePrefs = useTilePrefs();
@@ -48,25 +54,30 @@ export function SettingsPage() {
     catch (e) { console.error(e); }
   }
 
-  async function sunshineSync() {
-    setSunBusy(true);
-    try {
-      const n: any = await (api as any).SunshineSync();
-      api.Toast("success", `Sunshine: синхронизировано игр — ${n}. Служба перезапущена — обнови список в Moonlight.`);
-      await refreshSunshine();
-    } catch (e) {
-      api.Toast("error", "Sunshine sync: " + String(e));
-    } finally { setSunBusy(false); }
-  }
+  // Stream backend progress lines into the modal log.
+  useEffect(() => {
+    const off = EventsOn("sunshine:progress", (line: any) => {
+      setSunLog((prev) => [...prev, String(line)]);
+    });
+    return () => { try { (off as any)?.(); } catch {} };
+  }, []);
 
-  async function sunshineClear() {
+  // Autoscroll the log to the bottom as lines arrive.
+  useEffect(() => { sunLogEndRef.current?.scrollIntoView({ block: "end" }); }, [sunLog]);
+
+  async function runSunshine(kind: "sync" | "clear") {
+    setSunModal(true);
+    setSunResult(null);
+    setSunLog([kind === "sync" ? "Запускаю синхронизацию…" : "Запускаю очистку…"]);
     setSunBusy(true);
     try {
-      const n: any = await (api as any).SunshineClear();
-      api.Toast("success", `Sunshine: удалено наших записей — ${n}.`);
+      if (kind === "sync") await (api as any).SunshineSync();
+      else await (api as any).SunshineClear();
+      setSunResult("ok");
       await refreshSunshine();
     } catch (e) {
-      api.Toast("error", "Sunshine clear: " + String(e));
+      setSunLog((prev) => [...prev, "ОШИБКА: " + String(e)]);
+      setSunResult("err");
     } finally { setSunBusy(false); }
   }
 
@@ -395,19 +406,20 @@ export function SettingsPage() {
             Регистрирует игры из GameSaver в <code className="rounded bg-card px-1">apps.json</code>{" "}
             Sunshine (с путями запуска и обложками) — они появятся в Moonlight.
             Твои ручные записи (Desktop, Steam Big Picture и пр.) не трогаются.
-            После записи служба Sunshine перезапускается, чтобы она перечитала список
-            (активный стрим на пару секунд прервётся) — затем обнови список в Moonlight.
-            {sun.needsAdmin && " Требует подтверждения UAC."}
+            Список полностью заменяется на наш (старые записи и дубликаты убираются;
+            Desktop остаётся). После записи служба Sunshine перезапускается, чтобы
+            перечитать список (активный стрим на пару секунд прервётся), затем обнови
+            список в Moonlight. Требуется подтверждение UAC.
           </p>
           <div className="mt-1 text-[11px] text-muted">
-            Сейчас наших записей: <span className="text-gray-200">{sun.managed}</span>
+            Игр зарегистрировано: <span className="text-gray-200">{sun.managed}</span>
             {" · "}<span className="break-all">{sun.appsPath}</span>
           </div>
           <div className="mt-3 flex items-center gap-2">
-            <button className="btn btn-primary" disabled={sunBusy} onClick={sunshineSync}>
-              {sunBusy ? "…" : "🔄 Синхронизировать игры"}
+            <button className="btn btn-primary" disabled={sunBusy} onClick={() => runSunshine("sync")}>
+              🔄 Синхронизировать игры
             </button>
-            <button className="btn" disabled={sunBusy} onClick={sunshineClear}>
+            <button className="btn" disabled={sunBusy} onClick={() => runSunshine("clear")}>
               🧹 Очистить игры
             </button>
           </div>
@@ -498,6 +510,31 @@ export function SettingsPage() {
           </div>
         </div>
       </section>
+
+      <Modal
+        open={sunModal}
+        title="Sunshine — синхронизация"
+        onClose={() => { if (!sunBusy) setSunModal(false); }}
+        footer={
+          <button className="btn btn-primary" disabled={sunBusy} onClick={() => setSunModal(false)}>
+            {sunBusy ? "Выполняется…" : "Закрыть"}
+          </button>
+        }
+      >
+        <div className="max-h-[50vh] min-h-[8rem] overflow-y-auto rounded-lg bg-black/40 p-3 font-mono text-xs leading-relaxed text-gray-300">
+          {sunLog.map((ln, i) => (
+            <div key={i} className={
+              ln.startsWith("ОШИБКА") || ln.includes("ВНИМАНИЕ") ? "text-red-300"
+              : ln.includes("✅") || ln.includes("запущен") ? "text-emerald-300"
+              : ""
+            }>{ln}</div>
+          ))}
+          {sunBusy && <div className="mt-1 animate-pulse text-accent">▌ выполняется…</div>}
+          {sunResult === "ok" && <div className="mt-2 text-emerald-300">✅ Готово. Обнови список игр в Moonlight.</div>}
+          {sunResult === "err" && <div className="mt-2 text-red-300">❌ Не удалось. См. лог выше.</div>}
+          <div ref={sunLogEndRef} />
+        </div>
+      </Modal>
     </div>
   );
 }

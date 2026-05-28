@@ -125,9 +125,9 @@ export function SleepWorkstation():Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;
 
-export function SunshineClear():Promise<number>;
+export function SunshineClear():Promise<void>;
 
-export function SunshineSync():Promise<number>;
+export function SunshineSync():Promise<void>;
 
 export function Toast(arg1:string,arg2:string):Promise<void>;
 

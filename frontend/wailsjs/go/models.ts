@@ -473,7 +473,6 @@ export namespace sunshine {
 	    installed: boolean;
 	    appsPath: string;
 	    managed: number;
-	    needsAdmin: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -484,7 +483,6 @@ export namespace sunshine {
 	        this.installed = source["installed"];
 	        this.appsPath = source["appsPath"];
 	        this.managed = source["managed"];
-	        this.needsAdmin = source["needsAdmin"];
 	    }
 	}
 

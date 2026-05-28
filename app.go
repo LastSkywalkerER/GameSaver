@@ -888,14 +888,21 @@ func (a *App) GetSunshineStatus() (*sunshine.Status, error) {
 	return &st, nil
 }
 
-// SunshineSync writes every library game into Sunshine's apps.json (cmd +
-// working-dir + cover), preserving the user's own entries. Returns the
-// number of games synced. May trigger one UAC prompt if apps.json lives in
-// Program Files.
-func (a *App) SunshineSync() (int, error) {
+// sunshineEmit streams a progress line to the UI's sync modal.
+func (a *App) sunshineEmit(line string) {
+	if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "sunshine:progress", line)
+	}
+}
+
+// SunshineSync overwrites Sunshine's apps.json with the whole library
+// (Desktop + our games, covers transcoded to PNG) and restarts the
+// Sunshine service. Streams progress via "sunshine:progress" events; one
+// UAC prompt for the elevated copy + restart.
+func (a *App) SunshineSync() error {
 	games, err := a.ListGames()
 	if err != nil {
-		return 0, err
+		return err
 	}
 	coversDir := a.cfg.CoversDir()
 	out := make([]sunshine.SyncGame, 0, len(games))
@@ -927,12 +934,12 @@ func (a *App) SunshineSync() (int, error) {
 		}
 		out = append(out, sg)
 	}
-	return sunshine.Sync(out)
+	return sunshine.Sync(out, a.sunshineEmit)
 }
 
-// SunshineClear removes only the entries GameSaver added to apps.json.
-func (a *App) SunshineClear() (int, error) {
-	return sunshine.Clear()
+// SunshineClear resets apps.json to just the Desktop entry + restarts.
+func (a *App) SunshineClear() error {
+	return sunshine.Clear(a.sunshineEmit)
 }
 
 // pickInstallation chooses which installation to register, mirroring the

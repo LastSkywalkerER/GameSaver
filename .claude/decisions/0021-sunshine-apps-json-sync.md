@@ -19,14 +19,15 @@ games**; when Sunshine isn't found the block is rendered dimmed/disabled ("не 
   `file_apps` in `sunshine.conf` → `<install>\config\apps.json` → `%PROGRAMDATA%\Sunshine\config\apps.json`.
 - **cmd priority mirrors `internal/launcher`:** Steam → `steam://` deep-link; everyone else → bare exe
   + `working-dir`; deep-link only as fallback. (Same reasoning as [0020](0020-launch-exe-over-deeplink.md).)
-- **image-path:** absolute path to GameSaver's cached cover on disk — avoids copying into Sunshine's
-  `assets/` and the bare-name-resolution question. (Sunshine accepts absolute paths; the user's own
-  Cyberpunk entry already used one.)
-- **Never clobber user entries.** We track the names WE added in a sidecar
-  (`%LOCALAPPDATA%\GameSaver\sunshine-managed.json`). Sync upserts our names (and refreshes prior
-  ones); Clear removes only sidecar names. Desktop / Steam Big Picture / hand-added apps are kept.
-  We also stamp a best-effort `"gamesaver-managed":"true"` marker, but the sidecar is the source of
-  truth because Sunshine's Web UI may drop unknown fields when it re-saves.
+- **Full replace, not merge (revised after v0.8.0).** GameSaver IS the menu, so the old app list has
+  no value — and a name-merge created duplicates (Sunshine's "Alan Wake 2" vs our canonical "Alan
+  Wake II"). Sync now writes `[Desktop, ...ourGames]`: it keeps only the special **Desktop** entry
+  (so desktop streaming still works) and drops everything else. Clear resets to `[Desktop]`. The
+  managed-names sidecar from v0.8.0 was removed — we own the whole file now.
+- **image-path → PNG (revised after v0.8.0).** Moonlight reliably renders only PNG box art, but ~80%
+  of our cached covers are JPG, so they didn't show. We transcode each cover to PNG into
+  `cache\sunshine-art\` and point image-path at the absolute PNG (PNG covers are used as-is). Decode
+  failure → no box art for that entry rather than a failed sync.
 - **Elevated write.** On a default install `apps.json` is in `Program Files` (Users have RX, not W).
   We stage the merged file to `%LOCALAPPDATA%\GameSaver\` (no admin) then do a single UAC-elevated
   `cmd /c copy` (ShellExecuteEx `runas`), waiting on the process + checking its exit code so a
@@ -34,14 +35,16 @@ games**; when Sunshine isn't found the block is rendered dimmed/disabled ("не 
 
 ## Consequences
 
-- One UAC prompt per Sync/Clear. The elevated `cmd` does BOTH the copy AND `net stop/start
-  SunshineService`, because **Sunshine caches its app list in memory and only re-reads apps.json on
-  (re)start** — a direct file edit is invisible to Moonlight otherwise (the v0.8.0 "buttons do nothing"
-  report). The restart is the reason elevation is always needed (service control needs admin), so we
-  always route through the elevated path even when the file itself is writable.
+- One UAC prompt per Sync/Clear. The elevated step is a generated `.bat` that does copy → stop service
+  → kill orphan `sunshine.exe` → start service → verify RUNNING, because **Sunshine caches its app
+  list in memory and only re-reads apps.json on (re)start** (the v0.8.0 "buttons do nothing" report).
+  The orphan-kill (v0.8.2) fixes Sunshine dying on restart: a lingering `sunshine.exe` held the port,
+  so the freshly-started service couldn't bind and died.
+- **Progress is streamed, not hidden.** The batch logs each step to a file; GameSaver tails it and
+  emits `sunshine:progress` lines into a modal log (copy → stop → kill → start → verify), so the user
+  sees what's happening instead of a frozen button. (v0.8.2, per user request.)
 - The restart drops any active stream for ~2 s. Acceptable since Sync/Clear are explicit desktop
-  actions, and surfaced in the UI text. Restart is best-effort (`& ver >nul` keeps the copy's exit
-  code authoritative) so a non-service Sunshine install still gets the file written.
+  actions, surfaced in the UI text.
 - After sync the user still refreshes the app grid in Moonlight (client-side cache).
 - JSON is written with `SetEscapeHTML(false)` so deep-link `&` stays literal, and 4-space indent to
   match Sunshine's own formatting.
