@@ -64,6 +64,8 @@ export function LockWorkstation():Promise<void>;
 
 export function MakeSoleMonitor(arg1:string):Promise<void>;
 
+export function MinimizeSelf():Promise<void>;
+
 export function OpenAutoLoginConfigurator():Promise<void>;
 
 export function OpenBackupFolder():Promise<void>;
@@ -85,6 +87,8 @@ export function RemoveSaveLocation(arg1:string):Promise<void>;
 export function RestartApp():Promise<void>;
 
 export function RestoreMonitorConfig():Promise<void>;
+
+export function RestoreSelf():Promise<void>;
 
 export function RestoreSnapshot(arg1:string,arg2:boolean):Promise<void>;
 

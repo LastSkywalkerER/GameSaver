@@ -110,6 +110,10 @@ export function MakeSoleMonitor(arg1) {
   return window['go']['main']['App']['MakeSoleMonitor'](arg1);
 }
 
+export function MinimizeSelf() {
+  return window['go']['main']['App']['MinimizeSelf']();
+}
+
 export function OpenAutoLoginConfigurator() {
   return window['go']['main']['App']['OpenAutoLoginConfigurator']();
 }
@@ -152,6 +156,10 @@ export function RestartApp() {
 
 export function RestoreMonitorConfig() {
   return window['go']['main']['App']['RestoreMonitorConfig']();
+}
+
+export function RestoreSelf() {
+  return window['go']['main']['App']['RestoreSelf']();
 }
 
 export function RestoreSnapshot(arg1, arg2) {

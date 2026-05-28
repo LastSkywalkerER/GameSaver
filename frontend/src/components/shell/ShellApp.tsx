@@ -245,10 +245,29 @@ export function ShellApp({
     }
     try {
       await api.LaunchGame(g.game.id, inst.id);
+      // Get out of the game's way: our fullscreen shell window is the
+      // foreground, and games launched via Steam/Epic can't steal
+      // foreground from us (Windows foreground lock), so they come up
+      // BEHIND us. Minimising clears the blocker; RestoreSelf fires when
+      // the playtime tracker sees the game exit.
+      api.MinimizeSelf();
     } catch (e) {
       api.Toast("error", "Не удалось запустить: " + String(e));
     }
   }
+
+  // Bring the shell back when a game session ends. The playtime tracker
+  // emits "playtime:changed" with endedAt when a tracked exe disappears;
+  // we restore + raise our window so the user lands back on the carousel
+  // instead of a black screen (no Explorer behind us in shell mode).
+  useEffect(() => {
+    const off = EventsOn("playtime:changed", (p: any) => {
+      if (p && p.endedAt) {
+        api.RestoreSelf();
+      }
+    });
+    return () => { try { (off as any)?.(); } catch {} };
+  }, []);
 
   return (
     <div className="fixed inset-0 overflow-hidden text-gray-100">

@@ -820,6 +820,34 @@ func (a *App) GetAutoLoginStatus() (*AutoLoginStatus, error) {
 	return &AutoLoginStatus{CheckboxHidden: hidden}, nil
 }
 
+// ===== Window foreground control (shell-mode game launching) =====
+
+// MinimizeSelf drops the GameSaver window out of the way. In shell mode we
+// call this right after launching a game: the game is started by its
+// launcher (Steam/Epic/...), which isn't the foreground process, so
+// Windows' foreground lock stops the game window from coming up over our
+// fullscreen shell. Minimizing removes the blocker and the game takes the
+// screen.
+func (a *App) MinimizeSelf() {
+	if a.ctx != nil {
+		wailsruntime.WindowMinimise(a.ctx)
+	}
+}
+
+// RestoreSelf un-minimises and raises the GameSaver window. Called when a
+// game session ends so the shell UI comes back without the user having to
+// Alt+Tab. The always-on-top toggle forces Windows to actually bring us
+// forward instead of just flashing in the (non-existent in shell) taskbar.
+func (a *App) RestoreSelf() {
+	if a.ctx == nil {
+		return
+	}
+	wailsruntime.WindowUnminimise(a.ctx)
+	wailsruntime.WindowShow(a.ctx)
+	wailsruntime.WindowSetAlwaysOnTop(a.ctx, true)
+	wailsruntime.WindowSetAlwaysOnTop(a.ctx, false)
+}
+
 // ===== Power (shell-mode parking) =====
 
 // LockWorkstation bounces the user to the Windows lock screen — same

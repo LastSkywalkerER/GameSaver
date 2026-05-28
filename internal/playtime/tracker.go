@@ -26,8 +26,10 @@ const (
 )
 
 // pollInterval is how often we list processes; shorter = more accurate end
-// times, longer = less CPU. 30s is a sane default.
-const pollInterval = 30 * time.Second
+// times (and, in shell mode, a snappier "game closed → bring the launcher
+// back" restore), longer = less CPU. 6s is a good balance — a tasklist
+// snapshot is cheap and 6s is barely perceptible as lag.
+const pollInterval = 6 * time.Second
 
 // Service tracks live game sessions and writes them to the DB.
 // `emit` is invoked on session start and end (with payload {gameId,
