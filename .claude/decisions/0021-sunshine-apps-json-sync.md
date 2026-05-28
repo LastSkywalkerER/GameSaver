@@ -34,9 +34,15 @@ games**; when Sunshine isn't found the block is rendered dimmed/disabled ("не 
 
 ## Consequences
 
-- One UAC prompt per Sync/Clear when `apps.json` is in Program Files. Acceptable; surfaced in the UI.
-- Sunshine may need an app-list refresh in Moonlight (or a Sunshine restart on older builds) to show
-  changes; we toast a hint rather than restarting the service (admin + interrupts active streams).
+- One UAC prompt per Sync/Clear. The elevated `cmd` does BOTH the copy AND `net stop/start
+  SunshineService`, because **Sunshine caches its app list in memory and only re-reads apps.json on
+  (re)start** — a direct file edit is invisible to Moonlight otherwise (the v0.8.0 "buttons do nothing"
+  report). The restart is the reason elevation is always needed (service control needs admin), so we
+  always route through the elevated path even when the file itself is writable.
+- The restart drops any active stream for ~2 s. Acceptable since Sync/Clear are explicit desktop
+  actions, and surfaced in the UI text. Restart is best-effort (`& ver >nul` keeps the copy's exit
+  code authoritative) so a non-service Sunshine install still gets the file written.
+- After sync the user still refreshes the app grid in Moonlight (client-side cache).
 - JSON is written with `SetEscapeHTML(false)` so deep-link `&` stays literal, and 4-space indent to
   match Sunshine's own formatting.
 

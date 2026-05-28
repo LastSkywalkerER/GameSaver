@@ -52,7 +52,7 @@ export function SettingsPage() {
     setSunBusy(true);
     try {
       const n: any = await (api as any).SunshineSync();
-      api.Toast("success", `Sunshine: синхронизировано игр — ${n}. Обнови список в Moonlight.`);
+      api.Toast("success", `Sunshine: синхронизировано игр — ${n}. Служба перезапущена — обнови список в Moonlight.`);
       await refreshSunshine();
     } catch (e) {
       api.Toast("error", "Sunshine sync: " + String(e));
@@ -395,7 +395,9 @@ export function SettingsPage() {
             Регистрирует игры из GameSaver в <code className="rounded bg-card px-1">apps.json</code>{" "}
             Sunshine (с путями запуска и обложками) — они появятся в Moonlight.
             Твои ручные записи (Desktop, Steam Big Picture и пр.) не трогаются.
-            {sun.needsAdmin && " Запись в Program Files требует подтверждения UAC."}
+            После записи служба Sunshine перезапускается, чтобы она перечитала список
+            (активный стрим на пару секунд прервётся) — затем обнови список в Moonlight.
+            {sun.needsAdmin && " Требует подтверждения UAC."}
           </p>
           <div className="mt-1 text-[11px] text-muted">
             Сейчас наших записей: <span className="text-gray-200">{sun.managed}</span>

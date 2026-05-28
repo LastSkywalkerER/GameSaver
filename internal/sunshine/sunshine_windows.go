@@ -349,13 +349,13 @@ func saveManaged(names []string) error {
 
 // ─── Writing apps.json (direct, or UAC-elevated copy) ────────────────────
 
-func writeApps(path string, data []byte, needsAdmin bool) error {
-	if !needsAdmin {
-		if err := os.WriteFile(path, data, 0o644); err == nil {
-			return nil
-		}
-	}
-	// Stage to a user-writable temp file, then elevate a single copy.
+func writeApps(path string, data []byte, _ bool) error {
+	// We ALWAYS go through the elevated path, even if the file itself were
+	// user-writable: Sunshine keeps its app list in memory and only re-reads
+	// apps.json on (re)start, so the change is invisible to Moonlight until
+	// we restart SunshineService — and that needs admin regardless. So one
+	// UAC prompt does both: copy the staged file into place AND bounce the
+	// service so Sunshine reloads.
 	tmp := filepath.Join(filepath.Dir(managedPath()), "sunshine-apps.staged.json")
 	if err := os.MkdirAll(filepath.Dir(tmp), 0o755); err != nil {
 		return err
@@ -364,7 +364,7 @@ func writeApps(path string, data []byte, needsAdmin bool) error {
 		return err
 	}
 	defer os.Remove(tmp)
-	return writeElevatedCopy(tmp, path)
+	return installAndReload(tmp, path)
 }
 
 func fileExists(p string) bool { fi, err := os.Stat(p); return err == nil && !fi.IsDir() }
@@ -427,13 +427,23 @@ const (
 	waitInfinite          = 0xFFFFFFFF
 )
 
-// writeElevatedCopy copies src→dst via an elevated `cmd /c copy` (one UAC
-// prompt), waits for it, and checks the exit code so we don't report
-// success if the user cancelled UAC or the copy failed.
-func writeElevatedCopy(src, dst string) error {
+// installAndReload copies src→dst AND restarts SunshineService, both in a
+// single elevated `cmd /c` (one UAC prompt). Sunshine caches its app list,
+// so without the restart Moonlight never sees the new apps.json.
+//
+// cmd structure: the copy is grouped and gated with `&&` so a copy failure
+// is detected via exit code; the restart is best-effort (a non-service
+// Sunshine install has nothing to stop) and `ver >nul` forces the group's
+// exit code to 0 so a restart hiccup doesn't look like a write failure.
+//
+// We wait on the process + check the exit code so a cancelled UAC or a
+// failed copy doesn't get reported as success.
+func installAndReload(src, dst string) error {
 	verb, _ := syscall.UTF16PtrFromString("runas")
 	file, _ := syscall.UTF16PtrFromString("cmd.exe")
-	params, _ := syscall.UTF16PtrFromString(fmt.Sprintf(`/c copy /Y "%s" "%s"`, src, dst))
+	params, _ := syscall.UTF16PtrFromString(fmt.Sprintf(
+		`/c (copy /Y "%s" "%s") && (net stop SunshineService & net start SunshineService & ver >nul)`,
+		src, dst))
 
 	info := shellExecuteInfoW{
 		fMask:        seeMaskNoCloseProcess | seeMaskNoAsync,
