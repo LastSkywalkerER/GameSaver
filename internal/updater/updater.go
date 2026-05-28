@@ -21,7 +21,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -68,75 +67,69 @@ func New(currentVersion string) *Updater {
 	}
 }
 
-type ghRelease struct {
-	TagName     string    `json:"tag_name"`
-	HTMLURL     string    `json:"html_url"`
-	Body        string    `json:"body"`
-	PublishedAt time.Time `json:"published_at"`
-	Draft       bool      `json:"draft"`
-	Prerelease  bool      `json:"prerelease"`
-	Assets      []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-		Size               int64  `json:"size"`
-	} `json:"assets"`
-}
-
-// Check queries GitHub's "latest release" endpoint. Returns Available=true
-// only when there's a newer (and not skipped-by-user) semver tag with a
-// platform asset published.
+// Check determines the latest release WITHOUT touching api.github.com.
+//
+// The GitHub REST API is rate-limited to 60 req/hour for unauthenticated
+// clients and was returning 403 Forbidden, killing update detection. So we
+// resolve the latest tag from the HTML redirect
+// (github.com/<o>/<r>/releases/latest → …/releases/tag/<tag>) — plain web
+// pages aren't subject to the API rate limit — and build the asset +
+// checksum URLs from the well-known release-download pattern (these go to
+// the objects CDN, also un-rate-limited). No API, no 403.
 func (u *Updater) Check(ctx context.Context) (*UpdateInfo, error) {
 	if u.CurrentVersion == "dev" || u.CurrentVersion == "" {
 		return &UpdateInfo{Available: false, CurrentVer: u.CurrentVersion}, nil
 	}
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", u.Owner, u.Repo)
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	// GitHub rejects API requests without a User-Agent (403). Be explicit
-	// rather than rely on Go's default UA, which GitHub may also throttle.
-	req.Header.Set("User-Agent", "GameSaver-updater")
-	resp, err := u.HTTPClient.Do(req)
+	latest, err := u.latestTagViaRedirect(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("github releases api: %s", resp.Status)
-	}
-	var rel ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return nil, err
-	}
 	info := &UpdateInfo{
-		CurrentVer:   u.CurrentVersion,
-		LatestVer:    rel.TagName,
-		ReleaseURL:   rel.HTMLURL,
-		ReleaseNotes: rel.Body,
-		PublishedAt:  rel.PublishedAt.Format(time.RFC3339),
+		CurrentVer:  u.CurrentVersion,
+		LatestVer:   latest,
+		ReleaseURL:  fmt.Sprintf("https://github.com/%s/%s/releases/tag/%s", u.Owner, u.Repo, latest),
+		PublishedAt: time.Now().Format(time.RFC3339),
 	}
-	if rel.Draft || rel.Prerelease || rel.TagName == "" {
+	if latest == "" || !versionGreater(latest, u.CurrentVersion) {
 		return info, nil
 	}
-	if !versionGreater(rel.TagName, u.CurrentVersion) {
-		return info, nil
-	}
-	// Find an asset whose name ends with our platform suffix.
-	for _, a := range rel.Assets {
-		if strings.HasSuffix(a.Name, u.AssetSuffix) {
-			info.AssetURL = a.BrowserDownloadURL
-			info.AssetSize = a.Size
-			break
-		}
-	}
-	// Pull SHA-256 from the checksums.txt asset, if published.
-	for _, a := range rel.Assets {
-		if a.Name == "checksums.txt" {
-			info.SHA256 = u.fetchSha(ctx, a.BrowserDownloadURL, u.assetBaseName(rel.TagName))
-			break
-		}
-	}
-	info.Available = info.AssetURL != ""
+	// Predictable CDN URLs from our CI's asset naming — no API lookup.
+	assetName := u.assetBaseName(latest) // GameSaver-<tag>-windows-amd64.zip
+	info.AssetURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s",
+		u.Owner, u.Repo, latest, assetName)
+	checksumURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/checksums.txt",
+		u.Owner, u.Repo, latest)
+	info.SHA256 = u.fetchSha(ctx, checksumURL, assetName)
+	info.ReleaseNotes = fmt.Sprintf("Подробности: %s", info.ReleaseURL)
+	info.Available = true
 	return info, nil
+}
+
+// latestTagViaRedirect reads the Location header of the (un-rate-limited)
+// /releases/latest HTML endpoint, e.g. ".../releases/tag/v0.8.6" → "v0.8.6".
+func (u *Updater) latestTagViaRedirect(ctx context.Context) (string, error) {
+	url := fmt.Sprintf("https://github.com/%s/%s/releases/latest", u.Owner, u.Repo)
+	// Don't follow the redirect — we just want the Location.
+	client := &http.Client{
+		Timeout:       u.HTTPClient.Timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Set("User-Agent", "GameSaver-updater")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	if loc == "" {
+		loc = resp.Request.URL.String() // no redirect (e.g. 200) — use final URL
+	}
+	i := strings.LastIndex(loc, "/tag/")
+	if i < 0 {
+		return "", fmt.Errorf("releases/latest: cannot parse tag from %q (status %s)", loc, resp.Status)
+	}
+	return strings.Trim(loc[i+len("/tag/"):], "/"), nil
 }
 
 // Apply downloads info.AssetURL, verifies SHA-256, extracts the binary from
