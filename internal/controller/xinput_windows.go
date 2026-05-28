@@ -162,6 +162,7 @@ func (s *Service) Run(ctx context.Context) {
 		navDir      string
 		navStarted  time.Time
 		lastRepeat  time.Time
+		wasPaused   bool
 	)
 
 	for {
@@ -169,6 +170,17 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
+			// Paused while a game is running (we minimised ourselves).
+			// CRUCIAL: we don't even call XInputGetState here. Polling the
+			// device at 50 Hz from the background contends with the game's
+			// own XInput reads — the driver serialises access to a wireless
+			// pad and the game ends up "missing" button presses. Backing off
+			// the device entirely hands the controller cleanly to the game.
+			if s.paused.Load() {
+				wasPaused = true
+				continue
+			}
+
 			var st state
 			slot, ok := pollAny(&st)
 
@@ -188,15 +200,15 @@ func (s *Service) Run(ctx context.Context) {
 				// Suppress button events on the first frame so a held button
 				// from before connect doesn't fire spuriously.
 				prevButtons = st.Gamepad.Buttons
+				wasPaused = false
 				continue
 			}
 
-			// Paused while a game is running (we minimised ourselves). Keep
-			// the connection state fresh but emit nothing — otherwise we'd
-			// keep scrolling the carousel and firing A in the background,
-			// stealing focus from the game via the launcher. Reset the
-			// button/nav baseline so resuming doesn't replay a held button.
-			if s.paused.Load() {
+			// First frame after resuming from pause — reset the button/nav
+			// baseline so a button held during the game doesn't replay into
+			// the carousel the moment we come back.
+			if wasPaused {
+				wasPaused = false
 				prevButtons = st.Gamepad.Buttons
 				navDir = ""
 				continue
