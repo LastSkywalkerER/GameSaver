@@ -84,6 +84,7 @@ const errSuccess = 0
 type Service struct {
 	emit      func(string, any)
 	connected atomic.Bool
+	paused    atomic.Bool
 }
 
 func New(emit func(string, any)) *Service {
@@ -92,6 +93,11 @@ func New(emit func(string, any)) *Service {
 
 // IsConnected returns the most-recent poll result.
 func (s *Service) IsConnected() bool { return s.connected.Load() }
+
+// SetPaused stops/resumes emitting nav + button events. Used while a game
+// is running (GameSaver minimised) so we don't drive the hidden UI behind
+// the game. State (connected) keeps updating; only input emission pauses.
+func (s *Service) SetPaused(p bool) { s.paused.Store(p) }
 
 // Run blocks until ctx is cancelled. Polls XInput across ALL FOUR user
 // indices (Windows assigns connected controllers to slots 0–3 — usually
@@ -182,6 +188,17 @@ func (s *Service) Run(ctx context.Context) {
 				// Suppress button events on the first frame so a held button
 				// from before connect doesn't fire spuriously.
 				prevButtons = st.Gamepad.Buttons
+				continue
+			}
+
+			// Paused while a game is running (we minimised ourselves). Keep
+			// the connection state fresh but emit nothing — otherwise we'd
+			// keep scrolling the carousel and firing A in the background,
+			// stealing focus from the game via the launcher. Reset the
+			// button/nav baseline so resuming doesn't replay a held button.
+			if s.paused.Load() {
+				prevButtons = st.Gamepad.Buttons
+				navDir = ""
 				continue
 			}
 

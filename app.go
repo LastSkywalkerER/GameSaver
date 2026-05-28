@@ -829,6 +829,13 @@ func (a *App) GetAutoLoginStatus() (*AutoLoginStatus, error) {
 // fullscreen shell. Minimizing removes the blocker and the game takes the
 // screen.
 func (a *App) MinimizeSelf() {
+	// Pause controller input first so we stop driving the (now hidden) UI
+	// the instant we step aside — otherwise we'd keep scrolling the
+	// carousel and launching games in the background, stealing focus from
+	// the game the user is trying to play.
+	if a.controller != nil {
+		a.controller.SetPaused(true)
+	}
 	if a.ctx != nil {
 		wailsruntime.WindowMinimise(a.ctx)
 	}
@@ -846,6 +853,10 @@ func (a *App) RestoreSelf() {
 	wailsruntime.WindowShow(a.ctx)
 	wailsruntime.WindowSetAlwaysOnTop(a.ctx, true)
 	wailsruntime.WindowSetAlwaysOnTop(a.ctx, false)
+	// Resume controller input now that we're back in front.
+	if a.controller != nil {
+		a.controller.SetPaused(false)
+	}
 }
 
 // ===== Power (shell-mode parking) =====
