@@ -52,6 +52,33 @@ export namespace backup {
 
 }
 
+export namespace bluetooth {
+	
+	export class Device {
+	    id: string;
+	    address: string;
+	    name: string;
+	    connected: boolean;
+	    isAudio: boolean;
+	    classHex: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Device(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.address = source["address"];
+	        this.name = source["name"];
+	        this.connected = source["connected"];
+	        this.isAudio = source["isAudio"];
+	        this.classHex = source["classHex"];
+	    }
+	}
+
+}
+
 export namespace config {
 	
 	export class Config {

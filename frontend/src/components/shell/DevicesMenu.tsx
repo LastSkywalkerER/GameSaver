@@ -16,7 +16,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { api } from "../../api";
 import { useControllerButton, useControllerNav } from "../../controller";
 import { playBack, playMove, playSelect } from "../../sound";
 
@@ -35,10 +34,12 @@ export function DevicesMenu({
   onClose,
   onPickMonitor,
   onPickAudio,
+  onPickBluetooth,
 }: {
   onClose: () => void;
   onPickMonitor: () => void;
   onPickAudio: () => void;
+  onPickBluetooth: () => void;
 }) {
   const actions: Action[] = [
     {
@@ -51,8 +52,7 @@ export function DevicesMenu({
     },
     {
       key: "bluetooth", icon: "📶", label: "Bluetooth",
-      desc: "Подключить парные BT-наушники. Появится в v0.10.1 — пока используй системные настройки.",
-      disabled: true,
+      desc: "Подключить парные BT-наушники. Пайринг — через Параметры Windows; здесь только connect/disconnect.",
     },
   ];
 
@@ -73,14 +73,12 @@ export function DevicesMenu({
   // Same stale-closure guard as PowerMenu — pass the index explicitly.
   function activate(i: number) {
     const a = actions[i];
-    if (a.disabled) {
-      api.Toast("info", "Bluetooth-пикер — в v0.10.1.");
-      return;
-    }
+    if (a.disabled) return;
     playSelect();
     onClose();
     if (a.key === "monitor") onPickMonitor();
     else if (a.key === "audio") onPickAudio();
+    else if (a.key === "bluetooth") onPickBluetooth();
   }
 
   useControllerNav((dir) => {

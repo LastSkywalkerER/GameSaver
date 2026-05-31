@@ -6,14 +6,12 @@ import { TILE_PREF_LABELS, setTilePref, useTilePrefs, type TilePrefs } from "../
 import { confirmModal } from "../components/Modal";
 import { AudioPicker } from "../components/shell/AudioPicker";
 import {
-  SOUND_PACK_LABELS,
-  getSoundPack,
+  isNavSoundEnabled,
   playBack,
   playMove,
   playSelect,
-  setSoundPack,
-  subscribeSoundPack,
-  type SoundPack,
+  setNavSoundEnabled,
+  subscribeNavSound,
 } from "../sound";
 
 type ShellStatus = {
@@ -25,14 +23,16 @@ type ShellStatus = {
 export function SettingsPage({
   onOpenMonitorPicker,
   onOpenAudioPicker,
+  onOpenBluetoothPicker,
 }: {
-  // Optional injectors for the in-app monitor/audio pickers. Used by
-  // ShellSettingsPage to delegate to the shell-level picker host —
-  // normal desktop mode leaves them undefined and the Monitor button
-  // falls back to the system Display Settings shortcut, while the Audio
-  // button renders its own picker inline.
+  // Optional injectors for the in-app monitor/audio/bluetooth pickers.
+  // Used by ShellSettingsPage to delegate to the shell-level picker host
+  // — normal desktop mode leaves them undefined and the buttons fall
+  // back to system shortcuts (Monitor → toast hint, Audio → renders its
+  // own picker inline, Bluetooth → system Add-Bluetooth applet).
   onOpenMonitorPicker?: () => void;
   onOpenAudioPicker?: () => void;
+  onOpenBluetoothPicker?: () => void;
 } = {}) {
   const t = useT();
   const [cfg, setCfg] = useState<AppConfig | null>(null);
@@ -48,8 +48,8 @@ export function SettingsPage({
   const [sunResult, setSunResult] = useState<"ok" | "err" | null>(null);
   const sunLogEndRef = useRef<HTMLDivElement | null>(null);
   const [audioOpen, setAudioOpen] = useState(false);
-  const [soundPack, setSoundPackState] = useState<SoundPack>(() => getSoundPack());
-  useEffect(() => subscribeSoundPack(setSoundPackState), []);
+  const [soundOn, setSoundOn] = useState<boolean>(() => isNavSoundEnabled());
+  useEffect(() => subscribeNavSound(setSoundOn), []);
   const tilePrefs = useTilePrefs();
 
   useEffect(() => {
@@ -371,27 +371,23 @@ export function SettingsPage({
       </section>
 
       <section className="card p-4">
-        <div className="text-xs uppercase tracking-wide text-muted">Звук навигации</div>
+        <div className="text-xs uppercase tracking-wide text-muted">Звук</div>
         <p className="mt-2 text-xs text-muted">
           Используется в shell-режиме на каждом движении карусели / запуске
-          игры. Звуки генерируются на лету (Web Audio API) — никаких файлов.
+          игры. v0.10.1 пресет — «тихий» (короткие синусы); если выключить,
+          выключится и ambient-фон.
         </p>
-        <div className="mt-3 space-y-2">
-          {(Object.keys(SOUND_PACK_LABELS) as SoundPack[]).map((p) => (
-            <label key={p} className="flex items-center gap-2 text-sm text-gray-200">
-              <input
-                type="radio"
-                name="soundPack"
-                className="gs-radio"
-                checked={soundPack === p}
-                onChange={() => { setSoundPack(p); if (p !== "off") playSelect(); }}
-              />
-              {SOUND_PACK_LABELS[p]}
-            </label>
-          ))}
-        </div>
-        {soundPack !== "off" && (
-          <div className="mt-3 flex gap-2">
+        <label className="mt-3 flex items-center gap-2 text-sm text-gray-200">
+          <input
+            type="checkbox"
+            className="gs-check"
+            checked={soundOn}
+            onChange={(e) => { setNavSoundEnabled(e.target.checked); if (e.target.checked) playSelect(); }}
+          />
+          Включить звук навигации и ambient-фон
+        </label>
+        {soundOn && (
+          <div className="mt-3 flex flex-wrap gap-2">
             <button className="btn" onClick={playMove}>▶ Move</button>
             <button className="btn" onClick={playSelect}>▶ Select</button>
             <button className="btn" onClick={playBack}>▶ Back</button>
@@ -435,11 +431,21 @@ export function SettingsPage({
             🎧 Аудио…
           </button>
           <button
-            className="btn opacity-60"
-            disabled
-            title="Пикер парных BT-устройств — в v0.10.1. Пока используй системные настройки."
+            className="btn"
+            disabled={!onOpenBluetoothPicker}
+            onClick={() => {
+              if (!onOpenBluetoothPicker) {
+                api.Toast("info", "Bluetooth-пикер доступен в shell-режиме. Пайринг — через Параметры Windows.");
+                return;
+              }
+              playSelect();
+              onOpenBluetoothPicker();
+            }}
+            title={onOpenBluetoothPicker
+              ? "Список парных BT-устройств. A — connect/disconnect, X — обновить."
+              : "Только в shell-режиме."}
           >
-            📶 Bluetooth… <span className="ml-1 text-[10px] text-muted">(v0.10.1)</span>
+            📶 Bluetooth…
           </button>
           <button
             className="btn"

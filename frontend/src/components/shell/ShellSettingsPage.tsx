@@ -21,7 +21,7 @@
 // the universal "move focus" channel.
 
 import { useCallback, useEffect, useRef } from "react";
-import { useControllerButton, useControllerNav } from "../../controller";
+import { useControllerButton, useControllerNav, useControllerScroll } from "../../controller";
 import { playBack, playMove, playSelect } from "../../sound";
 import { SettingsPage } from "../../pages/SettingsPage";
 import { ShellBackground } from "./ShellBackground";
@@ -30,10 +30,12 @@ export function ShellSettingsPage({
   onClose,
   onOpenMonitorPicker,
   onOpenAudioPicker,
+  onOpenBluetoothPicker,
 }: {
   onClose: () => void;
   onOpenMonitorPicker: () => void;
   onOpenAudioPicker: () => void;
+  onOpenBluetoothPicker: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // Recollect focusables lazily — DOM shape inside SettingsPage rarely
@@ -79,11 +81,21 @@ export function ShellSettingsPage({
   }, [collect]);
 
   useControllerNav((dir) => {
-    if (dir === "up")   moveFocus(-1);
-    if (dir === "down") moveFocus(+1);
-    // left/right intentionally not handled — let the focused control
-    // see them (number input increments, select dropdown navigation,
-    // etc.) via the native browser behaviour.
+    // d-pad / LS — walk focusable controls. ↑/↓ AND ←/→ both move the
+    // focus cursor here: in a vertical settings page horizontal nav
+    // would have nowhere to go anyway, so we map all four directions to
+    // the same axis instead of leaving ←/→ silent.
+    if (dir === "up" || dir === "left")    moveFocus(-1);
+    else if (dir === "down" || dir === "right") moveFocus(+1);
+  });
+  // Right stick — pure scroll on the page body. Per-tick delta is in
+  // [-1..+1] at 50 Hz, multiplied by a px speed factor. 18 px/tick × 50
+  // Hz ≈ 900 px/s at full deflection, close to a continuous wheel
+  // scroll. The handler runs against the inner scroll container ref
+  // captured below.
+  useControllerScroll(({ dy }) => {
+    const el = rootRef.current; if (!el) return;
+    el.scrollBy({ top: dy * 18, behavior: "auto" });
   });
   useControllerButton((btn) => {
     if (btn === "a") {
@@ -142,6 +154,7 @@ export function ShellSettingsPage({
         <SettingsPage
           onOpenMonitorPicker={onOpenMonitorPicker}
           onOpenAudioPicker={onOpenAudioPicker}
+          onOpenBluetoothPicker={onOpenBluetoothPicker}
         />
       </div>
     </div>

@@ -15,6 +15,27 @@
   *::-webkit-scrollbar { width: 10px; height: 10px; }
   *::-webkit-scrollbar-thumb { background: #2a2d39; border-radius: 8px; }
   *::-webkit-scrollbar-track { background: transparent; }
+
+  /* Universal :focus-visible ring — every focusable element gets a
+     bright accent outline when keyboard / gamepad nav lands on it.
+     We rely on this for ShellSettingsPage's d-pad walk: it just calls
+     .focus() on the next focusable, the browser flips :focus-visible,
+     and the user SEES where the cursor went. The previous v0.10.0
+     approach relied on per-component focus styles which were
+     inconsistent (buttons had no ring, only inputs did). */
+  *:focus { outline: none; } /* kill the brown ugly default */
+  *:focus-visible {
+    outline: 2px solid theme("colors.accent");
+    outline-offset: 2px;
+    border-radius: 0.4rem;
+  }
+  /* The custom checkbox/radio paint their own focus ring via
+     box-shadow (see below) — suppress the universal one there or it
+     fights the rounded glow. */
+  input[type="checkbox"].gs-check:focus-visible,
+  input[type="radio"].gs-radio:focus-visible {
+    outline: none;
+  }
 }
 
 /* Shell-mode animated background blobs — slow continuous drift to give the

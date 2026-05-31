@@ -34,6 +34,10 @@ export function ClearManifestOverride(arg1) {
   return window['go']['main']['App']['ClearManifestOverride'](arg1);
 }
 
+export function ConnectBluetoothDevice(arg1) {
+  return window['go']['main']['App']['ConnectBluetoothDevice'](arg1);
+}
+
 export function Context() {
   return window['go']['main']['App']['Context']();
 }
@@ -48,6 +52,10 @@ export function DeleteSnapshot(arg1) {
 
 export function DisableShellMode() {
   return window['go']['main']['App']['DisableShellMode']();
+}
+
+export function DisconnectBluetoothDevice(arg1) {
+  return window['go']['main']['App']['DisconnectBluetoothDevice'](arg1);
 }
 
 export function EnableShellMode() {
@@ -102,6 +110,10 @@ export function ListAudioDevices() {
   return window['go']['main']['App']['ListAudioDevices']();
 }
 
+export function ListBluetoothDevices() {
+  return window['go']['main']['App']['ListBluetoothDevices']();
+}
+
 export function ListGames() {
   return window['go']['main']['App']['ListGames']();
 }
@@ -136,6 +148,10 @@ export function OpenAutoLoginConfigurator() {
 
 export function OpenBackupFolder() {
   return window['go']['main']['App']['OpenBackupFolder']();
+}
+
+export function OpenWindowsBluetoothSettings() {
+  return window['go']['main']['App']['OpenWindowsBluetoothSettings']();
 }
 
 export function OpenWindowsSoundSettings() {

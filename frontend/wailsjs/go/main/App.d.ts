@@ -8,6 +8,7 @@ import {main} from '../models';
 import {config} from '../models';
 import {sunshine} from '../models';
 import {audio} from '../models';
+import {bluetooth} from '../models';
 import {display} from '../models';
 import {backup} from '../models';
 import {pipeline} from '../models';
@@ -28,6 +29,8 @@ export function CheckForUpdate():Promise<updater.UpdateInfo>;
 
 export function ClearManifestOverride(arg1:string):Promise<void>;
 
+export function ConnectBluetoothDevice(arg1:string):Promise<void>;
+
 export function Context():Promise<context.Context>;
 
 export function DeepScanGame(arg1:string):Promise<Array<match.DeepScanResult>>;
@@ -35,6 +38,8 @@ export function DeepScanGame(arg1:string):Promise<Array<match.DeepScanResult>>;
 export function DeleteSnapshot(arg1:string):Promise<void>;
 
 export function DisableShellMode():Promise<void>;
+
+export function DisconnectBluetoothDevice(arg1:string):Promise<void>;
 
 export function EnableShellMode():Promise<void>;
 
@@ -62,6 +67,8 @@ export function LaunchGame(arg1:string,arg2:string):Promise<void>;
 
 export function ListAudioDevices():Promise<Array<audio.Device>>;
 
+export function ListBluetoothDevices():Promise<Array<bluetooth.Device>>;
+
 export function ListGames():Promise<Array<domain.GameView>>;
 
 export function ListMonitors():Promise<Array<display.Monitor>>;
@@ -79,6 +86,8 @@ export function MinimizeSelf():Promise<void>;
 export function OpenAutoLoginConfigurator():Promise<void>;
 
 export function OpenBackupFolder():Promise<void>;
+
+export function OpenWindowsBluetoothSettings():Promise<void>;
 
 export function OpenWindowsSoundSettings():Promise<void>;
 

@@ -5,12 +5,14 @@
 //   controller:state  {connected: bool}
 //   controller:button {button: "a|b|x|y|start|back|lb|rb"}
 //   controller:nav    {dir: "up|down|left|right"}            (auto-repeat)
+//   controller:scroll {dx: number, dy: number}               (right stick, 50 Hz)
 
 import { useEffect, useState } from "react";
 import { api, EventsOn } from "./api";
 
 export type NavDir = "up" | "down" | "left" | "right";
 export type Button = "a" | "b" | "x" | "y" | "start" | "back" | "lb" | "rb";
+export type ScrollDelta = { dx: number; dy: number };
 
 // Single global state holder. Re-broadcast to subscribers so multiple
 // components can show the chip / react to buttons without duplicating
@@ -19,6 +21,7 @@ let connected = false;
 const stateSubs = new Set<(c: boolean) => void>();
 const navSubs = new Set<(d: NavDir) => void>();
 const buttonSubs = new Set<(b: Button) => void>();
+const scrollSubs = new Set<(d: ScrollDelta) => void>();
 
 let wired = false;
 function ensureWired() {
@@ -35,6 +38,11 @@ function ensureWired() {
   EventsOn("controller:button", (p: any) => {
     const btn = p?.button as Button;
     if (btn) buttonSubs.forEach((fn) => fn(btn));
+  });
+  EventsOn("controller:scroll", (p: any) => {
+    const d: ScrollDelta = { dx: Number(p?.dx) || 0, dy: Number(p?.dy) || 0 };
+    if (d.dx === 0 && d.dy === 0) return;
+    scrollSubs.forEach((fn) => fn(d));
   });
 }
 
@@ -81,5 +89,17 @@ export function useControllerButton(handler: (b: Button) => void) {
   useEffect(() => {
     buttonSubs.add(handler);
     return () => { buttonSubs.delete(handler); };
+  }, [handler]);
+}
+
+/** Fires `handler` ~50 Hz while the right stick is outside its deadzone.
+ *  dx / dy are normalised in [-1.0..+1.0]. dy is already flipped to
+ *  "scroll-down positive" so callers can pass it straight to
+ *  `el.scrollBy({ top: dy * speed })`. */
+export function useControllerScroll(handler: (d: ScrollDelta) => void) {
+  ensureWired();
+  useEffect(() => {
+    scrollSubs.add(handler);
+    return () => { scrollSubs.delete(handler); };
   }, [handler]);
 }

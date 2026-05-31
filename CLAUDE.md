@@ -73,7 +73,8 @@ This file is alive. It grows after incidents and decisions.
 │   ├── 0022-multi-location-discovery-and-migration.md
 │   ├── 0023-in-app-audio-device-picker.md
 │   ├── 0024-shell-bg-art-video-and-ambient-drone.md
-│   └── 0025-shell-controller-overhaul-and-settings-page.md
+│   ├── 0025-shell-controller-overhaul-and-settings-page.md
+│   └── 0026-bluetooth-picker-rs-scroll-mp3-ambient.md
 │
 ├── chronicles/                        # PROJECT MILESTONES (how we got here)
 │   ├── 2026-05-26-mvp-m0-m11.md

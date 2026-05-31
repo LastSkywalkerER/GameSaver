@@ -239,6 +239,34 @@ func (s *Service) Run(ctx context.Context) {
 				dir = "right"
 			}
 
+			// Right-stick → continuous "scroll" events for whatever the
+			// UI considers its active scrollable surface (Settings page,
+			// drawer body, backups modal). Smaller deadzone than nav
+			// because we want fine, low-speed scrolling at the edges.
+			// Emitted at the polling tick rate (50 Hz) — the UI receives
+			// roughly 50 events per second of held stick, each with the
+			// normalised magnitude in [-1.0..+1.0] for the direction.
+			//
+			// Note: emit only when outside the deadzone — the bulk of
+			// idle ticks should not produce events (otherwise we'd
+			// flood the event bus while the user just holds the pad).
+			const rsDeadzone = int16(8000)
+			rx := st.Gamepad.ThumbRX
+			ry := st.Gamepad.ThumbRY
+			if rx > rsDeadzone || rx < -rsDeadzone || ry > rsDeadzone || ry < -rsDeadzone {
+				var dx, dy float64
+				if rx > rsDeadzone || rx < -rsDeadzone {
+					dx = float64(rx) / 32768.0
+				}
+				if ry > rsDeadzone || ry < -rsDeadzone {
+					// XInput Y is UP-positive, but in the DOM "scroll
+					// down" is +y, so flip the sign here. The frontend
+					// can pass dy directly to el.scrollBy({top: dy}).
+					dy = -float64(ry) / 32768.0
+				}
+				s.emit("controller:scroll", map[string]any{"dx": dx, "dy": dy})
+			}
+
 			if dir == "" {
 				navDir = ""
 				continue

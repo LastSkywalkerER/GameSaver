@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, coverUrl, formatBytes, formatDate, formatDuration, formatRelative, type GameView, type ManifestSearchResult, type PlaySession } from "../api";
 import { SourceBadge } from "./SourceBadge";
 import { useT } from "../i18n";
 import { ManifestPickerDialog } from "./ManifestPicker";
 import { DeepScanDialog } from "./DeepScanDialog";
 import { confirmModal } from "./Modal";
-import { useControllerButton, useControllerNav } from "../controller";
-import { playBack } from "../sound";
+import { useControllerButton, useControllerNav, useControllerScroll } from "../controller";
+import { playBack, playMove, playSelect } from "../sound";
 
 export function GameDrawer({
   view,
@@ -38,33 +38,93 @@ export function GameDrawer({
   }, [view.game.id, view.game.lastPlayedAt, view.game.totalPlaySeconds]);
 
   // Drawer is the third gamepad surface (after carousel + power menu).
-  // d-pad up/down scrolls the body; B closes. Per-row navigation (A on
-  // Restore/Launch/etc.) is out of scope here — fine-grained focus
-  // management of dozens of buttons fits poorly into a flat list and
-  // the user can still tab/mouse for now. (Picker / DeepScan modals
-  // shadow these handlers while open.)
+  // v0.10.1: d-pad / LS walks focusables inside the drawer with the
+  // accent ring (same model as ShellSettingsPage), A activates the
+  // focused control, right stick scrolls the body, B closes. The
+  // ManifestPicker / DeepScan child dialogs shadow these handlers
+  // when they're up.
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  function scrollBody(delta: number) {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollBy({ top: delta, behavior: "smooth" });
+
+  // Walk focusable controls in DOM order — buttons, links, inputs.
+  // Same trick as the settings page: re-collect on each move so newly
+  // mounted rows (loaded sessions etc.) are reachable without a
+  // MutationObserver.
+  const collectFocusables = useCallback((): HTMLElement[] => {
+    const root = scrollRef.current; if (!root) return [];
+    const sel = [
+      'button:not([disabled])',
+      'input:not([disabled]):not([type="hidden"])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      'a[href]',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(",");
+    return Array.from(root.querySelectorAll<HTMLElement>(sel))
+      .filter((el) => el.offsetParent !== null);
+  }, []);
+
+  function moveDrawerFocus(delta: number) {
+    const els = collectFocusables();
+    if (!els.length) return;
+    const cur = document.activeElement as HTMLElement | null;
+    const i = cur ? els.indexOf(cur) : -1;
+    const next = Math.max(0, Math.min(els.length - 1, (i < 0 ? 0 : i) + delta));
+    if (next === i) return;
+    const target = els[next];
+    target.focus();
+    target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    playMove();
   }
+
   useControllerNav((dir) => {
     if (showPicker || showDeepScan) return;
-    if (dir === "up") scrollBody(-180);
-    else if (dir === "down") scrollBody(+180);
+    // ↑/↓ AND ←/→ all walk the focusable list — drawer rows are
+    // single-column, so left/right would otherwise be silent.
+    if (dir === "up" || dir === "left") moveDrawerFocus(-1);
+    else if (dir === "down" || dir === "right") moveDrawerFocus(+1);
+  });
+  useControllerScroll(({ dy }) => {
+    if (showPicker || showDeepScan) return;
+    const el = scrollRef.current; if (!el) return;
+    el.scrollBy({ top: dy * 18, behavior: "auto" });
   });
   useControllerButton((btn) => {
     if (showPicker || showDeepScan) return;
-    if (btn === "b" || btn === "back") { playBack(); onClose(); }
+    if (btn === "a") {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return;
+      // Inputs/selects edit themselves — A clicking on a number input
+      // would do nothing. Skip those; everything else (buttons etc.)
+      // gets clicked.
+      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") return;
+      playSelect();
+      el.click();
+    } else if (btn === "b" || btn === "back") {
+      playBack(); onClose();
+    }
   });
+
+  // Autofocus the first control on open so a single ↓ press lands
+  // somewhere useful. Delay one frame for the DOM to settle.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const els = collectFocusables();
+      els[0]?.focus({ preventScroll: true });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [collectFocusables, view.game.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (showPicker || showDeepScan) return;
       if (e.key === "Escape") onClose();
-      else if (e.key === "PageDown") { e.preventDefault(); scrollBody(+360); }
-      else if (e.key === "PageUp") { e.preventDefault(); scrollBody(-360); }
+      else if (e.key === "PageDown") {
+        e.preventDefault();
+        scrollRef.current?.scrollBy({ top: +360, behavior: "smooth" });
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        scrollRef.current?.scrollBy({ top: -360, behavior: "smooth" });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

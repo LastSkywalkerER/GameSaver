@@ -16,6 +16,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"GameSaver/internal/audio"
+	"GameSaver/internal/bluetooth"
 	"GameSaver/internal/autologin"
 	"GameSaver/internal/backup"
 	"GameSaver/internal/config"
@@ -1055,6 +1056,44 @@ func (a *App) SetDefaultAudioDevice(deviceID string) error { return audio.SetDef
 // panel-style and works without Explorer.
 func (a *App) OpenWindowsSoundSettings() error {
 	return exec.Command("rundll32.exe", "shell32.dll,Control_RunDLL", "mmsys.cpl,,0").Start()
+}
+
+// ===== Bluetooth devices (in-app picker for paired BT audio) =====
+
+// ListBluetoothDevices enumerates every PAIRED bluetooth device known
+// to the local radio. Pairing must already be done via Windows
+// Settings — the picker only manages connect/disconnect for known
+// devices. Each entry carries fConnected, fAuthenticated and the
+// "is audio" hint (major class 0x04) so the UI can highlight headset
+// candidates.
+func (a *App) ListBluetoothDevices() ([]bluetooth.Device, error) { return bluetooth.List() }
+
+// ConnectBluetoothDevice tells Windows to enable every audio service
+// on the given paired device. The call BLOCKS for up to ~30s while
+// the radio negotiates with the headset — Wails marshals that into
+// a Promise.then on the JS side so the UI stays responsive.
+func (a *App) ConnectBluetoothDevice(deviceID string) error {
+	return bluetooth.Connect(deviceID)
+}
+
+// DisconnectBluetoothDevice flips the audio services off. Same
+// blocking semantics as Connect.
+func (a *App) DisconnectBluetoothDevice(deviceID string) error {
+	return bluetooth.Disconnect(deviceID)
+}
+
+// OpenWindowsBluetoothSettings opens the legacy "Bluetooth & other
+// devices" control panel page. Used as the "I want to PAIR a new
+// device" fallback from inside the BluetoothPicker — pairing is the
+// scope-creep we explicitly left out of the in-app picker.
+func (a *App) OpenWindowsBluetoothSettings() error {
+	// fsquirt = "Bluetooth File Transfer", which on its own pops the
+	// add-device flow when called with no args. Works without Explorer.
+	if err := exec.Command("fsquirt.exe").Start(); err != nil {
+		// Fallback: control panel "Bluetooth Devices" applet.
+		return exec.Command("control.exe", "bthprops.cpl").Start()
+	}
+	return nil
 }
 
 // OpenAutoLoginConfigurator unhides the netplwiz checkbox if needed
