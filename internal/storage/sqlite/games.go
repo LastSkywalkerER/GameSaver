@@ -17,8 +17,8 @@ func (s *Store) UpsertGame(g *domain.Game) error {
 	}
 	g.UpdatedAt = now
 	_, err := s.DB.Exec(`
-		INSERT INTO games (id,name,slug,igdb_id,steam_app_id,cover_path,hero_path,icon_path,genres,release_year,hidden,created_at,updated_at,last_played_at,total_play_seconds)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		INSERT INTO games (id,name,slug,igdb_id,steam_app_id,cover_path,hero_path,icon_path,genres,release_year,hidden,created_at,updated_at,last_played_at,total_play_seconds,video_path)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
 			slug=excluded.slug,
@@ -27,18 +27,22 @@ func (s *Store) UpsertGame(g *domain.Game) error {
 			cover_path=COALESCE(NULLIF(excluded.cover_path,''), games.cover_path),
 			hero_path=COALESCE(NULLIF(excluded.hero_path,''), games.hero_path),
 			icon_path=COALESCE(NULLIF(excluded.icon_path,''), games.icon_path),
+			video_path=COALESCE(NULLIF(excluded.video_path,''), games.video_path),
 			genres=COALESCE(NULLIF(excluded.genres,''), games.genres),
 			release_year=COALESCE(NULLIF(excluded.release_year,0), games.release_year),
 			hidden=excluded.hidden,
 			updated_at=excluded.updated_at
-	`, g.ID, g.Name, g.Slug, g.IGDBID, g.SteamAppID, g.CoverPath, g.HeroPath, g.IconPath, g.Genres, g.ReleaseYear, boolToInt(g.Hidden), g.CreatedAt, g.UpdatedAt, g.LastPlayedAt, g.TotalPlaySeconds)
+	`, g.ID, g.Name, g.Slug, g.IGDBID, g.SteamAppID, g.CoverPath, g.HeroPath, g.IconPath, g.Genres, g.ReleaseYear, boolToInt(g.Hidden), g.CreatedAt, g.UpdatedAt, g.LastPlayedAt, g.TotalPlaySeconds, g.VideoPath)
 	return err
 }
 
+// video_path is appended last so the column order matches scanGame; older
+// rows where the column was just retrofitted via migration default to ''.
 const gameSelectCols = `id,name,slug,COALESCE(igdb_id,0),COALESCE(steam_app_id,0),
 		COALESCE(cover_path,''),COALESCE(hero_path,''),COALESCE(icon_path,''),
 		COALESCE(genres,''),COALESCE(release_year,0),hidden,created_at,updated_at,
-		COALESCE(last_played_at,0),COALESCE(total_play_seconds,0)`
+		COALESCE(last_played_at,0),COALESCE(total_play_seconds,0),
+		COALESCE(video_path,'')`
 
 func (s *Store) GetGame(id string) (*domain.Game, error) {
 	row := s.DB.QueryRow(`SELECT `+gameSelectCols+` FROM games WHERE id=?`, id)
@@ -92,13 +96,17 @@ func (s *Store) SetGameHidden(id string, hidden bool) error {
 	return err
 }
 
-func (s *Store) UpdateGameCovers(id, cover, hero, icon string) error {
+// UpdateGameCovers writes any non-empty asset path; empty strings leave the
+// existing value untouched. video is the looped animated hero used as the
+// shell-mode background.
+func (s *Store) UpdateGameCovers(id, cover, hero, icon, video string) error {
 	_, err := s.DB.Exec(`UPDATE games SET
 		cover_path=COALESCE(NULLIF(?,''), cover_path),
 		hero_path=COALESCE(NULLIF(?,''), hero_path),
 		icon_path=COALESCE(NULLIF(?,''), icon_path),
+		video_path=COALESCE(NULLIF(?,''), video_path),
 		updated_at=? WHERE id=?`,
-		cover, hero, icon, time.Now().Unix(), id)
+		cover, hero, icon, video, time.Now().Unix(), id)
 	return err
 }
 
@@ -133,7 +141,7 @@ func scanGame(rs rowScanner) (*domain.Game, error) {
 	if err := rs.Scan(&g.ID, &g.Name, &g.Slug, &g.IGDBID, &g.SteamAppID,
 		&g.CoverPath, &g.HeroPath, &g.IconPath,
 		&g.Genres, &g.ReleaseYear, &hidden, &g.CreatedAt, &g.UpdatedAt,
-		&g.LastPlayedAt, &g.TotalPlaySeconds); err != nil {
+		&g.LastPlayedAt, &g.TotalPlaySeconds, &g.VideoPath); err != nil {
 		return nil, err
 	}
 	g.Hidden = hidden != 0

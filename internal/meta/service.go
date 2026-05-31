@@ -53,13 +53,13 @@ func New(cfg *config.Config, db *sqlite.Store) *Service {
 	}
 }
 
-// EnrichGame fetches cover/hero/icon for a single game.
+// EnrichGame fetches cover/hero/icon/video for a single game.
 func (s *Service) EnrichGame(ctx context.Context, g *domain.Game) error {
-	cover, hero, icon := s.fetch(ctx, g)
-	if cover == "" && hero == "" && icon == "" {
+	cover, hero, icon, video := s.fetch(ctx, g)
+	if cover == "" && hero == "" && icon == "" && video == "" {
 		return nil
 	}
-	return s.db.UpdateGameCovers(g.ID, cover, hero, icon)
+	return s.db.UpdateGameCovers(g.ID, cover, hero, icon, video)
 }
 
 // EnrichAll iterates all games and tries to add cover/hero/icon paths.
@@ -76,7 +76,12 @@ func (s *Service) EnrichAll(ctx context.Context, emit func(string, any)) {
 		if ctx.Err() != nil {
 			return
 		}
-		if g.CoverPath != "" && g.HeroPath != "" {
+		// Skip only when cover + hero + video are all already present —
+		// video was added in v0.9.2 so existing rows pass the old gate
+		// without ever fetching one. We still re-run fetch() in that case
+		// (and tryDownload is content-keyed so the image bytes are reused
+		// from disk without re-downloading).
+		if g.CoverPath != "" && g.HeroPath != "" && g.VideoPath != "" {
 			continue
 		}
 		wg.Add(1)
@@ -84,11 +89,11 @@ func (s *Service) EnrichAll(ctx context.Context, emit func(string, any)) {
 		go func(g *domain.Game) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			cover, hero, icon := s.fetch(ctx, g)
-			if cover == "" && hero == "" && icon == "" {
+			cover, hero, icon, video := s.fetch(ctx, g)
+			if cover == "" && hero == "" && icon == "" && video == "" {
 				return
 			}
-			if err := s.db.UpdateGameCovers(g.ID, cover, hero, icon); err != nil {
+			if err := s.db.UpdateGameCovers(g.ID, cover, hero, icon, video); err != nil {
 				slog.Warn("update covers", "id", g.ID, "err", err)
 				return
 			}
@@ -100,7 +105,7 @@ func (s *Service) EnrichAll(ctx context.Context, emit func(string, any)) {
 	wg.Wait()
 }
 
-func (s *Service) fetch(ctx context.Context, g *domain.Game) (cover, hero, icon string) {
+func (s *Service) fetch(ctx context.Context, g *domain.Game) (cover, hero, icon, video string) {
 	// Priority 1: Steam CDN (no key, very reliable for Steam games).
 	if g.SteamAppID > 0 {
 		cover = s.tryDownload(ctx, g, "cover", fmt.Sprintf("https://cdn.cloudflare.steamstatic.com/steam/apps/%d/library_600x900_2x.jpg", g.SteamAppID))
@@ -132,6 +137,13 @@ func (s *Service) fetch(ctx context.Context, g *domain.Game) (cover, hero, icon 
 					icon = s.tryDownload(ctx, g, "icon", u)
 				}
 			}
+			// Animated hero (webm/mp4) — used as the shell-mode looped
+			// background. Optional; many games don't have one.
+			if g.VideoPath == "" {
+				if u := s.sgdbFirstAsset(ctx, "heroes/steam", g.SteamAppID, "?types=animated"); u != "" {
+					video = s.tryDownload(ctx, g, "video", u)
+				}
+			}
 		} else {
 			// Search by name -> game id -> assets
 			if id := s.sgdbSearch(ctx, g.Name); id > 0 {
@@ -148,6 +160,11 @@ func (s *Service) fetch(ctx context.Context, g *domain.Game) (cover, hero, icon 
 				if icon == "" {
 					if u := s.sgdbFirstAsset(ctx, "icons/game", id, ""); u != "" {
 						icon = s.tryDownload(ctx, g, "icon", u)
+					}
+				}
+				if g.VideoPath == "" {
+					if u := s.sgdbFirstAsset(ctx, "heroes/game", id, "?types=animated"); u != "" {
+						video = s.tryDownload(ctx, g, "video", u)
 					}
 				}
 			}
@@ -271,9 +288,13 @@ func guessExt(ct, urlStr string) string {
 		return ".jpg"
 	case strings.Contains(ct, "gif"):
 		return ".gif"
+	case strings.Contains(ct, "webm"):
+		return ".webm"
+	case strings.Contains(ct, "mp4"):
+		return ".mp4"
 	}
 	low := strings.ToLower(urlStr)
-	for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp", ".gif"} {
+	for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp", ".gif", ".webm", ".mp4"} {
 		if strings.HasSuffix(strings.Split(low, "?")[0], ext) {
 			if ext == ".jpeg" {
 				return ".jpg"

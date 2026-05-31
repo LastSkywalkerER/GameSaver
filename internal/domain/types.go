@@ -56,6 +56,11 @@ type Game struct {
 	CoverPath        string `json:"coverPath,omitempty"`
 	HeroPath         string `json:"heroPath,omitempty"`
 	IconPath         string `json:"iconPath,omitempty"`
+	// VideoPath: animated hero (webm / mp4) cached locally — used as the
+	// looped background in shell mode. Optional; empty means no video and
+	// the shell falls back to HeroPath / CoverPath. Filled by the meta
+	// service from SteamGridDB's animated heroes endpoint.
+	VideoPath        string `json:"videoPath,omitempty"`
 	Genres           string `json:"genres,omitempty"`
 	ReleaseYear      int    `json:"releaseYear,omitempty"`
 	Hidden           bool   `json:"hidden"`

@@ -1,10 +1,11 @@
-// HeroPanel — the top portion of shell-mode UI. Shows the currently
-// highlighted game's hero art / cover huge, with the title, quick stats,
-// and a big Play button. The hero art crossfades whenever the active
-// game changes.
+// HeroPanel — the title / stats / Play button panel pinned to the
+// top-left of shell mode. As of v0.9.2 the hero art lives in
+// ShellBackground (full-screen, with the looped animated hero when
+// available) — HeroPanel no longer renders its own copy. We still draw
+// the dark left-side gradient locally so the title text stays readable
+// against busy backgrounds.
 
-import { useEffect, useState } from "react";
-import { coverUrl, formatDuration, formatRelative, type GameView } from "../../api";
+import { formatDuration, formatRelative, type GameView } from "../../api";
 
 export function HeroPanel({
   game,
@@ -15,10 +16,6 @@ export function HeroPanel({
   onLaunch: () => void;
   onDetails: () => void;
 }) {
-  // Track the image URL with a key so we get a fresh element each switch,
-  // triggering the hero-fade-in animation.
-  const heroSrc = game ? coverUrl(game.game.heroPath) ?? coverUrl(game.game.coverPath) : undefined;
-
   if (!game) {
     return (
       <div className="absolute inset-x-0 top-0 flex h-[55vh] items-center justify-center text-xl text-gray-400">
@@ -35,25 +32,16 @@ export function HeroPanel({
     // Height intentionally shorter than carousel-top so there's breathing
     // room between the hero's bottom and the carousel tiles — otherwise
     // the edges line up and look like one solid cut.
-    <div className="absolute inset-x-0 top-0 flex h-[55vh] items-end overflow-hidden">
-      {heroSrc && (
-        <img
-          key={g.id}
-          src={heroSrc}
-          alt={g.name}
-          className="animate-hero-fade absolute inset-0 h-full w-full object-cover opacity-60"
-        />
-      )}
-      {/* Bottom-to-top + right-to-left dark gradient so text on the left
-          stays readable regardless of cover content. The bottom-fade is
-          tall (40%) so the hero blends into the background well above
-          the carousel — no hard seam where the two halves meet. */}
-      <div className="absolute inset-0 bg-gradient-to-r from-black/95 via-black/50 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0b1e] via-[#0a0b1e]/40 to-transparent" style={{ backgroundSize: "100% 100%" }} />
+    <div className="pointer-events-none absolute inset-x-0 top-0 flex h-[55vh] items-end overflow-hidden">
+      {/* Left-side dark gradient — narrower than v0.5 (the global BG is
+          already a bit dimmed) so the right-side art breathes more. */}
+      <div className="absolute inset-y-0 left-0 w-2/3 bg-gradient-to-r from-black/80 via-black/30 to-transparent" />
 
       {/* pb-20 lifts content up so the Play button sits comfortably away
-          from the hero/carousel seam. */}
-      <div className="relative z-10 max-w-[55%] p-16 pb-20">
+          from the hero/carousel seam. pointer-events-auto re-enables
+          clicks on the buttons (parent disables them so the area behind
+          the panel still receives wheel/mouse for the carousel). */}
+      <div className="pointer-events-auto relative z-10 max-w-[55%] p-16 pb-20">
         <div className="mb-3 flex items-center gap-3 text-sm uppercase tracking-widest text-accent">
           {game.installations.map((i) => i.source).filter((v, i, a) => a.indexOf(v) === i).join(" · ")}
         </div>

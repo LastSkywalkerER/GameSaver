@@ -71,7 +71,8 @@ This file is alive. It grows after incidents and decisions.
 │   ├── 0020-launch-exe-over-deeplink.md
 │   ├── 0021-sunshine-apps-json-sync.md
 │   ├── 0022-multi-location-discovery-and-migration.md
-│   └── 0023-in-app-audio-device-picker.md
+│   ├── 0023-in-app-audio-device-picker.md
+│   └── 0024-shell-bg-art-video-and-ambient-drone.md
 │
 ├── chronicles/                        # PROJECT MILESTONES (how we got here)
 │   ├── 2026-05-26-mvp-m0-m11.md

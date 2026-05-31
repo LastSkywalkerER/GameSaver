@@ -107,3 +107,127 @@ function play(tones: Tone[]) {
 export function playMove()   { if (pack !== "off") play(PACK_MOVE[pack]); }
 export function playSelect() { if (pack !== "off") play(PACK_SELECT[pack]); }
 export function playBack()   { if (pack !== "off") play(PACK_BACK[pack]); }
+
+// ─── Ambient drone ─────────────────────────────────────────────────────
+//
+// A very quiet procedural pad that plays while the shell-mode menu is
+// visible — turn the screen on, hear a soft breathing chord. Same Web
+// Audio API as the navigation tones (no asset files per the rules).
+//
+// Design: three sine oscillators at a low triad (Cm9-ish — root, fifth,
+// minor seventh) plus a soft low-pass + slow LFO on the master gain so
+// it breathes instead of holding flat. Master gain caps at ~0.012 — felt
+// loud in headphones at 0.02; this is the "you only notice when it
+// stops" level the user asked for.
+//
+// Lifecycle:
+//   start() — called when the shell becomes active AND audio is allowed
+//             (AudioContext autoplay requires a prior user gesture; we
+//             call start() lazily from within a click/keydown handler).
+//   stop()  — called on visibility hidden / window minimize (game
+//             launched) / pack === "off". Smoothly ramps to silence and
+//             tears down the oscillators so we're not burning CPU while
+//             the user is in a game.
+//
+// We expose isAmbientOn() so the corner icon can show a state.
+
+type Drone = {
+  oscs: OscillatorNode[];
+  master: GainNode;
+  lfo: OscillatorNode;
+  lfoGain: GainNode;
+  filter: BiquadFilterNode;
+};
+let drone: Drone | null = null;
+
+// Chord intervals in Hz — picked to be low enough that even the highest
+// voice sits below the speaking voice register, so it doesn't compete
+// with anything (e.g. a Discord call) the user might layer on top.
+const AMBIENT_CHORD = [110, 164.81, 196]; // A2, E3, G3 — A minor 7 fragment
+const AMBIENT_MAX = 0.012;
+
+export function isAmbientOn(): boolean { return drone !== null; }
+
+export function startAmbient() {
+  if (drone || pack === "off") return;
+  const a = audio(); if (!a) return;
+  // Resume the context if it was suspended by the browser autoplay gate
+  // — caller is responsible for invoking start() from a user gesture but
+  // we resume defensively in case the context was created earlier.
+  if (a.state === "suspended") {
+    a.resume().catch(() => { /* will retry next gesture */ });
+  }
+  const now = a.currentTime;
+
+  const master = a.createGain();
+  master.gain.setValueAtTime(0.0001, now);
+  // 4 s fade-in so turning on doesn't pop on a cold session.
+  master.gain.exponentialRampToValueAtTime(AMBIENT_MAX, now + 4);
+
+  const filter = a.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(900, now); // keep it warm, no sizzle
+  filter.Q.setValueAtTime(0.6, now);
+
+  // Slow LFO on the master gain — "breathing" effect. ~0.07 Hz = ~14 s
+  // per cycle, slow enough to feel ambient instead of "wobbly".
+  const lfo = a.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.setValueAtTime(0.07, now);
+  const lfoGain = a.createGain();
+  lfoGain.gain.setValueAtTime(AMBIENT_MAX * 0.45, now);
+  lfo.connect(lfoGain).connect(master.gain);
+  lfo.start(now);
+
+  const oscs: OscillatorNode[] = [];
+  for (const hz of AMBIENT_CHORD) {
+    const o = a.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(hz, now);
+    // Tiny per-voice gain so the sum doesn't clip — each voice carries
+    // roughly 1/N of the headroom before they recombine in master.
+    const og = a.createGain();
+    og.gain.setValueAtTime(1 / AMBIENT_CHORD.length, now);
+    o.connect(og).connect(filter);
+    o.start(now);
+    oscs.push(o);
+  }
+  filter.connect(master).connect(a.destination);
+
+  drone = { oscs, master, lfo, lfoGain, filter };
+}
+
+export function stopAmbient() {
+  if (!drone) return;
+  const a = audio(); if (!a) { drone = null; return; }
+  const now = a.currentTime;
+  const d = drone;
+  drone = null; // mark stopped immediately so re-entrant calls are no-ops
+
+  // 1.5 s exponential fade-out then tear-down. exponentialRampToValueAtTime
+  // can't hit zero so we step to near-zero, then setValueAtTime to 0 a
+  // moment later to fully silence the nodes before .stop().
+  d.master.gain.cancelScheduledValues(now);
+  d.master.gain.setValueAtTime(d.master.gain.value, now);
+  d.master.gain.exponentialRampToValueAtTime(0.0001, now + 1.5);
+  d.master.gain.setValueAtTime(0, now + 1.55);
+
+  const teardown = () => {
+    try { d.oscs.forEach((o) => o.stop()); } catch {}
+    try { d.lfo.stop(); } catch {}
+    try {
+      d.oscs.forEach((o) => o.disconnect());
+      d.lfoGain.disconnect();
+      d.lfo.disconnect();
+      d.filter.disconnect();
+      d.master.disconnect();
+    } catch {}
+  };
+  setTimeout(teardown, 1700);
+}
+
+// React to the user turning the sound off in Settings while the drone
+// is playing — without this the chord stays running until reload.
+subscribeSoundPack((p) => {
+  if (p === "off") stopAmbient();
+});

@@ -13,7 +13,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, EventsOn, type GameView } from "../../api";
 import { useControllerButton, useControllerConnected, useControllerNav } from "../../controller";
-import { playBack, playMove, playSelect } from "../../sound";
+import {
+  getSoundPack,
+  playBack,
+  playMove,
+  playSelect,
+  startAmbient,
+  stopAmbient,
+  subscribeSoundPack,
+} from "../../sound";
 import { GameDrawer } from "../GameDrawer";
 import { BackupsPage } from "../../pages/BackupsPage";
 import { SettingsPage } from "../../pages/SettingsPage";
@@ -288,9 +296,59 @@ export function ShellApp({
     return () => { try { (off as any)?.(); } catch {} };
   }, []);
 
+  // ── Ambient menu drone ──────────────────────────────────────────────
+  // A very quiet procedural pad while the menu is up — turns off when
+  // the window is hidden (game launched / user minimised the shell), or
+  // when the sound pack is "off". The AudioContext can't auto-start on
+  // page load due to autoplay policy, so we wait for the first user
+  // gesture (mousemove, keydown, controller event) before kicking it
+  // off; visibilitychange handles the resume/pause cycle after that.
+  useEffect(() => {
+    let stopped = false;
+    const start = () => {
+      if (stopped) return;
+      if (document.hidden) return;
+      if (getSoundPack() === "off") return;
+      startAmbient();
+    };
+    const onVis = () => {
+      if (document.hidden) stopAmbient();
+      else start();
+    };
+    // Any of these gestures unlocks the AudioContext. After the first
+    // one we remove the listeners — visibilitychange takes over for
+    // suspend/resume.
+    const onGesture = () => {
+      start();
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
+      window.removeEventListener("wheel", onGesture);
+    };
+    const unsubPack = subscribeSoundPack((p) => {
+      if (p === "off") stopAmbient(); else start();
+    });
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pointerdown", onGesture);
+    window.addEventListener("keydown", onGesture);
+    window.addEventListener("wheel", onGesture);
+    // If the user has already interacted with the page (e.g. the monitor
+    // picker captured a controller A press before this effect armed),
+    // start immediately.
+    start();
+    return () => {
+      stopped = true;
+      unsubPack();
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
+      window.removeEventListener("wheel", onGesture);
+      stopAmbient();
+    };
+  }, []);
+
   return (
     <div className="fixed inset-0 overflow-hidden text-gray-100">
-      <ShellBackground />
+      <ShellBackground game={active} />
 
       {/* Top-left: controller status + button hints. The hint row only
           renders when a controller is connected — without one, hints are

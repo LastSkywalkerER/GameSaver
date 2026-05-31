@@ -34,6 +34,7 @@ export interface Game {
   coverPath?: string;
   heroPath?: string;
   iconPath?: string;
+  videoPath?: string;  // animated hero (webm/mp4) for shell background
   genres?: string;
   releaseYear?: number;
   hidden?: boolean;
@@ -116,6 +117,12 @@ export interface AppConfig {
 export function coverUrl(name?: string): string | undefined {
   if (!name) return undefined;
   return "/covers/" + name;
+}
+
+// Animated heroes live in the same coversDir, served by the same /covers/
+// route — this is just a semantic alias so the call site reads as video.
+export function videoUrl(name?: string): string | undefined {
+  return coverUrl(name);
 }
 
 export function formatBytes(n?: number): string {

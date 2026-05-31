@@ -112,6 +112,9 @@ var extraColumns = []struct{ table, col, def string }{
 	// (separate from size_bytes which holds the launch exe's own size).
 	{"installations", "install_dir_size_bytes", "INTEGER NOT NULL DEFAULT 0"},
 	{"installations", "install_dir_size_at", "INTEGER NOT NULL DEFAULT 0"},
+	// Animated hero used as the shell-mode background (webm/mp4 cached
+	// under coversDir). Empty = no video, frontend falls back to hero/cover.
+	{"games", "video_path", "TEXT NOT NULL DEFAULT ''"},
 }
 
 func applyMigrations(db *sql.DB) error {

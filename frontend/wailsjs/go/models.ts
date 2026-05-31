@@ -135,6 +135,7 @@ export namespace domain {
 	    coverPath?: string;
 	    heroPath?: string;
 	    iconPath?: string;
+	    videoPath?: string;
 	    genres?: string;
 	    releaseYear?: number;
 	    hidden: boolean;
@@ -157,6 +158,7 @@ export namespace domain {
 	        this.coverPath = source["coverPath"];
 	        this.heroPath = source["heroPath"];
 	        this.iconPath = source["iconPath"];
+	        this.videoPath = source["videoPath"];
 	        this.genres = source["genres"];
 	        this.releaseYear = source["releaseYear"];
 	        this.hidden = source["hidden"];
