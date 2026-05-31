@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, coverUrl, formatBytes, formatDate, formatDuration, formatRelative, type GameView, type ManifestSearchResult, type PlaySession } from "../api";
 import { SourceBadge } from "./SourceBadge";
 import { useT } from "../i18n";
 import { ManifestPickerDialog } from "./ManifestPicker";
 import { DeepScanDialog } from "./DeepScanDialog";
 import { confirmModal } from "./Modal";
+import { useControllerButton, useControllerNav } from "../controller";
+import { playBack } from "../sound";
 
 export function GameDrawer({
   view,
@@ -35,9 +37,34 @@ export function GameDrawer({
     return () => { cancelled = true; };
   }, [view.game.id, view.game.lastPlayedAt, view.game.totalPlaySeconds]);
 
+  // Drawer is the third gamepad surface (after carousel + power menu).
+  // d-pad up/down scrolls the body; B closes. Per-row navigation (A on
+  // Restore/Launch/etc.) is out of scope here — fine-grained focus
+  // management of dozens of buttons fits poorly into a flat list and
+  // the user can still tab/mouse for now. (Picker / DeepScan modals
+  // shadow these handlers while open.)
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  function scrollBody(delta: number) {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ top: delta, behavior: "smooth" });
+  }
+  useControllerNav((dir) => {
+    if (showPicker || showDeepScan) return;
+    if (dir === "up") scrollBody(-180);
+    else if (dir === "down") scrollBody(+180);
+  });
+  useControllerButton((btn) => {
+    if (showPicker || showDeepScan) return;
+    if (btn === "b" || btn === "back") { playBack(); onClose(); }
+  });
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !showPicker && !showDeepScan) onClose();
+      if (showPicker || showDeepScan) return;
+      if (e.key === "Escape") onClose();
+      else if (e.key === "PageDown") { e.preventDefault(); scrollBody(+360); }
+      else if (e.key === "PageUp") { e.preventDefault(); scrollBody(-360); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -156,7 +183,13 @@ export function GameDrawer({
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="card relative h-full w-full max-w-3xl overflow-y-auto rounded-none border-l border-border"
+        ref={scrollRef}
+        // overflow-x-hidden: drawer rows have long file paths (steamapps
+        // / AppData) — without it the whole drawer scrolls sideways when
+        // a path overflows, which read as the horizontal scrollbar in
+        // the v0.9.x screenshots. Vertical scroll is the only intended
+        // axis here.
+        className="card relative h-full w-full max-w-3xl overflow-y-auto overflow-x-hidden rounded-none border-l border-border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative h-56 overflow-hidden">
@@ -333,7 +366,10 @@ export function GameDrawer({
                 {sessions.map((s) => {
                   const active = !s.endedAt || s.endedAt === 0;
                   return (
-                    <div key={s.id} className="card flex items-center gap-3 px-3 py-1.5 text-xs">
+                    // flex-wrap so on a narrow drawer the chip/date/end-date
+                    // wraps to a second line instead of pushing the duration
+                    // off the right edge.
+                    <div key={s.id} className="card flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-xs">
                       <span className={"chip " + (active ? "border-emerald-700/50 bg-emerald-900/50 text-emerald-300" : "")}>
                         {active ? "▶ играет сейчас" : s.source}
                       </span>
@@ -363,7 +399,7 @@ export function GameDrawer({
               {view.snapshots.map((sn) => (
                 <div key={sn.id} className="card flex items-center justify-between gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-xs text-gray-300">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-300">
                       <span className="chip">{sn.trigger}</span>
                       <span>{formatDate(sn.createdAt)}</span>
                       <span>· {formatBytes(sn.compressedBytes)} / {formatBytes(sn.totalBytes)}</span>

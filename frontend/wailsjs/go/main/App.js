@@ -154,6 +154,10 @@ export function QuitApp() {
   return window['go']['main']['App']['QuitApp']();
 }
 
+export function RebootWorkstation() {
+  return window['go']['main']['App']['RebootWorkstation']();
+}
+
 export function ReconcileBackups() {
   return window['go']['main']['App']['ReconcileBackups']();
 }

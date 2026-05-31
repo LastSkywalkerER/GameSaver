@@ -62,6 +62,28 @@ func Sleep() error {
 	return nil
 }
 
+// Reboot issues a clean Windows restart. We shell out to `shutdown.exe
+// /r /t 0` rather than ExitWindowsEx directly because:
+//   - shutdown.exe sequences SE_SHUTDOWN_NAME acquisition + the actual
+//     ExitWindowsEx for us, which is exactly what the Start-menu Restart
+//     button does;
+//   - it also fires the WM_QUERYENDSESSION cascade so apps with unsaved
+//     work get a chance to refuse, instead of our shell-mode user losing
+//     state from another window.
+// /t 0 = no countdown. /r = reboot (not shutdown).
+//
+// In shell mode the user has a clear expectation: "I picked Reboot, the
+// box should reboot." If a runaway app blocks the shutdown, the user will
+// see the standard Windows "These apps are preventing reboot" screen,
+// not us — which is the right behaviour.
+func Reboot() error {
+	cmd := exec.Command("shutdown.exe", "/r", "/t", "0")
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("shutdown.exe /r: %w", err)
+	}
+	return nil
+}
+
 // enableShutdownPrivilege turns on SE_SHUTDOWN_NAME for our process token
 // so SetSuspendState is allowed. Best-effort — errors are swallowed since
 // the rundll32 fallback path handles the case where we can't get it.

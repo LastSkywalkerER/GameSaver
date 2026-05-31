@@ -934,6 +934,18 @@ func (a *App) SleepWorkstation() error {
 	return power.Sleep()
 }
 
+// RebootWorkstation kicks off `shutdown.exe /r /t 0`. We restore the
+// monitor layout first so the user logs back in to their original
+// multi-monitor setup, not the single-screen state shell-mode left
+// things in. Same red-line cleanup as the in-app Exit path — losing
+// the secondary monitors across a reboot is a real-world papercut.
+func (a *App) RebootWorkstation() error {
+	if err := a.RestoreMonitorConfig(); err != nil {
+		slog.Warn("restore monitors before reboot (non-fatal)", "err", err)
+	}
+	return power.Reboot()
+}
+
 // ===== Sunshine sync =====
 
 // GetSunshineStatus reports whether Sunshine is installed and how many

@@ -24,12 +24,17 @@ export function Modal({
   onClose,
   children,
   footer,
+  size = "md",
 }: {
   open: boolean;
   title?: ReactNode;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  /** md (default, max-w-md) for confirm-style; lg/xl/2xl/4xl/6xl for
+   *  data-heavy modals (Backups, Sunshine log) where the default cuts
+   *  off long columns. */
+  size?: "md" | "lg" | "xl" | "2xl" | "4xl" | "6xl";
 }) {
   // ESC closes; lock body scroll while open. Both are pure-DOM side effects
   // so they live in one effect tied to the open flag.
@@ -47,20 +52,37 @@ export function Modal({
 
   if (!open) return null;
 
+  // Tailwind doesn't pick up dynamic class names from interpolation —
+  // map sizes to their literal max-w-* tokens so the JIT keeps them.
+  const sizeClass = {
+    md: "max-w-md",
+    lg: "max-w-lg",
+    xl: "max-w-xl",
+    "2xl": "max-w-2xl",
+    "4xl": "max-w-4xl",
+    "6xl": "max-w-6xl",
+  }[size];
+
   return createPortal(
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      // v0.10.0: aligned with the PowerMenu / DevicesMenu look — heavier
+      // backdrop (black/80) + blur, so all modals across normal + shell
+      // mode read as one family of "thing-floating-over-the-app".
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
       onClick={onClose}
     >
       <div
-        className="card w-full max-w-md p-5 shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+        // Translucent tile instead of the v0.9 solid panel card. Soft
+        // white-on-glass borders + accent shadow match the PS-style
+        // tiles used in the power / devices / audio pickers.
+        className={`w-full ${sizeClass} rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.6)] backdrop-blur-md`}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="mb-3 text-base font-semibold text-gray-100">{title}</div>
+          <div className="mb-4 text-lg font-semibold text-gray-100">{title}</div>
         )}
         <div className="text-sm text-gray-300">{children}</div>
-        {footer && <div className="mt-5 flex justify-end gap-2">{footer}</div>}
+        {footer && <div className="mt-6 flex justify-end gap-2">{footer}</div>}
       </div>
     </div>,
     document.body,

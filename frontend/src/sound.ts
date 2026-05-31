@@ -163,43 +163,46 @@ type AmbientConfig = {
 };
 
 const AMBIENT_PACKS: Record<Exclude<SoundPack, "off">, AmbientConfig> = {
-  // Cmaj9: C3-E3-G3-B3-D4. Bright but not glassy — the B-D pair at the
-  // top gives the "hopeful" colour without being saccharine. Sine for
-  // warmth; tiny detune for shimmer.
+  // v0.10.0: dropped the C3 root from the Cmaj9 voicing — that low note
+  // was what made the pad feel "давящий" (oppressive). The remaining
+  // upper-structure (E3-G3-B3-D4) reads as bright and airy, like the
+  // top half of a Cmaj9 floating without weight underneath. Master
+  // gain pulled down a touch too. Filter sits where it did so it
+  // stays warm rather than glassy.
   psstyle: {
-    chord: [130.81, 164.81, 196.00, 246.94, 293.66],
+    chord: [164.81, 196.00, 246.94, 293.66],
     detuneCents: 4,
     oscType: "sine",
     filterCutHz: 1300,
     filterQ: 0.5,
-    maxGain: 0.014,
-    lfoHz: 0.08,
+    maxGain: 0.011,
+    lfoHz: 0.07,
     lfoDepth: 0.40,
   },
-  // Open-fifth pad: C2 + G3. Almost a sub — barely perceptible. Two
-  // voices, no detune (chorusing a near-octave reads as a beat, not
-  // shimmer).
+  // Sparse upper-fifth pad: G3 + D4. Two sine voices, no detune
+  // (chorusing two close pitches reads as a beat, not shimmer). The
+  // "you only notice when it stops" target.
   subtle: {
-    chord: [65.41, 196.00],
+    chord: [196.00, 293.66],
     detuneCents: 0,
     oscType: "sine",
-    filterCutHz: 700,
+    filterCutHz: 800,
     filterQ: 0.5,
-    maxGain: 0.009,
+    maxGain: 0.007,
     lfoHz: 0.05,
     lfoDepth: 0.50,
   },
-  // 8-bit boot vibe: C major triad (C3-E3-G3), triangle voices with
-  // gentle detune. Brighter low-pass, slightly faster breath — feels
-  // more "console powered on" than "ambient room".
+  // 8-bit boot vibe — C major triad voiced UP an octave (C4-E4-G4)
+  // instead of root-position. Bright triangle voices, gentle detune,
+  // brighter LPF. Feels more "menu screen" than "ambient room".
   retro: {
-    chord: [130.81, 164.81, 196.00],
-    detuneCents: 6,
+    chord: [261.63, 329.63, 392.00],
+    detuneCents: 5,
     oscType: "triangle",
-    filterCutHz: 1800,
+    filterCutHz: 2000,
     filterQ: 0.4,
-    maxGain: 0.011,
-    lfoHz: 0.12,
+    maxGain: 0.009,
+    lfoHz: 0.10,
     lfoDepth: 0.55,
   },
 };

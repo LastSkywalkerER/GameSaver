@@ -1,11 +1,14 @@
 // PowerMenu — modal that surfaces "park-the-PC" actions on a big
-// controller-friendly grid. Three buttons: Lock, Sleep, Exit shell.
-// Navigable via d-pad / arrows; A / Enter confirms; B / Esc closes.
+// controller-friendly grid. v0.10.0: "Сменить монитор" moved to the
+// new Devices chooser (Back / 🎛 corner icon); Reboot added; the grid
+// is now Lock / Sleep / Reboot / Exit. Navigable via d-pad / arrows;
+// A / Enter confirms; B / Esc closes.
 
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { api } from "../../api";
 import { useControllerButton, useControllerNav } from "../../controller";
+import { confirmModal } from "../Modal";
 import { playBack, playMove, playSelect } from "../../sound";
 
 type Action = {
@@ -21,13 +24,11 @@ type Action = {
 export function PowerMenu({
   onClose,
   onExit,
-  onSwitchMonitor,
   onArmSuppress,
 }: {
   onClose: () => void;
   onExit: () => void;
-  onSwitchMonitor: () => void;
-  // Called right before Lock/Sleep so the parent can mute the
+  // Called right before Lock/Sleep/Reboot so the parent can mute the
   // display:changed → picker reaction while the displays power down.
   onArmSuppress: () => void;
 }) {
@@ -35,11 +36,6 @@ export function PowerMenu({
   const lastMove = useRef(0);
 
   const actions: Action[] = [
-    {
-      key: "monitor", icon: "🖥", label: "Сменить монитор",
-      desc: "Снова покажет выбор активного монитора на всех экранах.",
-      run: () => { onClose(); onSwitchMonitor(); },
-    },
     {
       key: "lock", icon: "🔒", label: "Заблокировать",
       desc: "Выкинет на экран выбора пользователя. GameSaver продолжит работать в фоне.",
@@ -59,6 +55,26 @@ export function PowerMenu({
         onArmSuppress();
         try { await api.SleepWorkstation(); onClose(); }
         catch (e) { api.Toast("error", "Sleep: " + String(e)); }
+      },
+    },
+    {
+      key: "reboot", icon: "🔁", label: "Перезагрузка",
+      desc: "shutdown.exe /r /t 0 — стандартный рестарт Windows, дай несохранённым приложениям шанс отказаться.",
+      variant: "danger",
+      run: async () => {
+        // Soft confirm — reboot is irreversible from here. Sleep/Lock are
+        // benign so they confirm on a single A; reboot needs one more
+        // tap to be safe.
+        const ok = await confirmModal({
+          title: "Перезагрузить компьютер?",
+          body: "Все открытые программы получат WM_QUERYENDSESSION (могут отменить). GameSaver сначала восстановит вторичные мониторы, чтобы после входа десктоп был как раньше.",
+          confirmLabel: "Перезагрузить",
+          variant: "danger",
+        });
+        if (!ok) return;
+        onArmSuppress();
+        try { await (api as any).RebootWorkstation(); onClose(); }
+        catch (e) { api.Toast("error", "Reboot: " + String(e)); }
       },
     },
     {

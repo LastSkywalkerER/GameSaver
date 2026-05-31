@@ -68,3 +68,67 @@
            focus:outline-none focus:ring-2 focus:ring-accent/50;
   }
 }
+
+/* Themed checkbox + radio — the native browser controls are gray
+   half-rendered boxes that don't match the rest of the app. We zero out
+   the chrome with appearance:none and draw a small custom indicator.
+   Used everywhere in Settings; the .gs-check / .gs-radio classes apply
+   to <input type="checkbox"> and <input type="radio">. */
+input[type="checkbox"].gs-check,
+input[type="radio"].gs-radio {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  background-color: rgb(38 41 54); /* same as .card bg */
+  border: 1.5px solid rgb(58 62 80); /* same as .border */
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background-color 120ms, border-color 120ms, box-shadow 120ms;
+  flex-shrink: 0;
+}
+input[type="checkbox"].gs-check { border-radius: 0.3rem; }
+input[type="radio"].gs-radio    { border-radius: 9999px; }
+
+input[type="checkbox"].gs-check:hover,
+input[type="radio"].gs-radio:hover {
+  border-color: rgba(124, 92, 255, 0.55); /* accent/55 */
+}
+input[type="checkbox"].gs-check:focus-visible,
+input[type="radio"].gs-radio:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.35); /* accent ring */
+}
+
+input[type="checkbox"].gs-check:checked,
+input[type="radio"].gs-radio:checked {
+  background-color: rgb(124 92 255); /* accent */
+  border-color: rgb(124 92 255);
+}
+/* Checkmark — drawn as a CSS triangle via clip-path so we don't depend
+   on an icon font. Visible only when :checked. */
+input[type="checkbox"].gs-check::before {
+  content: "";
+  width: 0.6rem;
+  height: 0.6rem;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  background: white;
+  transform: scale(0);
+  transition: transform 100ms;
+}
+input[type="checkbox"].gs-check:checked::before {
+  transform: scale(1);
+}
+input[type="radio"].gs-radio::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: white;
+  transform: scale(0);
+  transition: transform 100ms;
+}
+input[type="radio"].gs-radio:checked::before {
+  transform: scale(1);
+}

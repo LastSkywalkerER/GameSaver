@@ -88,6 +88,8 @@ export function PrepareMonitorPick():Promise<main.MonitorPickPrep>;
 
 export function QuitApp():Promise<void>;
 
+export function RebootWorkstation():Promise<void>;
+
 export function ReconcileBackups():Promise<backup.ReconcileResult>;
 
 export function RematchGame(arg1:string,arg2:string):Promise<void>;

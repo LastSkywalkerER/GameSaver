@@ -22,7 +22,18 @@ type ShellStatus = {
   runningAsShell: boolean;
 };
 
-export function SettingsPage() {
+export function SettingsPage({
+  onOpenMonitorPicker,
+  onOpenAudioPicker,
+}: {
+  // Optional injectors for the in-app monitor/audio pickers. Used by
+  // ShellSettingsPage to delegate to the shell-level picker host —
+  // normal desktop mode leaves them undefined and the Monitor button
+  // falls back to the system Display Settings shortcut, while the Audio
+  // button renders its own picker inline.
+  onOpenMonitorPicker?: () => void;
+  onOpenAudioPicker?: () => void;
+} = {}) {
   const t = useT();
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [key, setKey] = useState("");
@@ -289,6 +300,7 @@ export function SettingsPage() {
         <label className="mt-2 flex items-center gap-2 text-sm text-gray-200">
           <input
             type="checkbox"
+            className="gs-check"
             checked={cfg.watcherEnabled}
             onChange={async (e) => {
               const v = e.target.checked;
@@ -329,6 +341,7 @@ export function SettingsPage() {
             <label key={k} className="flex items-center gap-2 text-sm text-gray-200">
               <input
                 type="checkbox"
+                className="gs-check"
                 checked={tilePrefs[k]}
                 onChange={(e) => setTilePref(k, e.target.checked)}
               />
@@ -343,6 +356,7 @@ export function SettingsPage() {
         <label className="mt-2 flex items-center gap-2 text-sm text-gray-200">
           <input
             type="checkbox"
+            className="gs-check"
             checked={cfg.autoCheckUpdates !== false}
             onChange={(e) => toggleAutoCheck(e.target.checked)}
           />
@@ -368,6 +382,7 @@ export function SettingsPage() {
               <input
                 type="radio"
                 name="soundPack"
+                className="gs-radio"
                 checked={soundPack === p}
                 onChange={() => { setSoundPack(p); if (p !== "off") playSelect(); }}
               />
@@ -382,31 +397,60 @@ export function SettingsPage() {
             <button className="btn" onClick={playBack}>▶ Back</button>
           </div>
         )}
-        <div className="mt-4 border-t border-border pt-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted">Устройство по умолчанию</div>
-          <p className="mt-1 text-xs text-muted">
-            Встроенный пикер — две колонки (вывод/ввод), геймпадом
-            ←→/LB/RB переключают колонку, ↑↓ выбирают, A назначает.
-            Меняет дефолт Windows для роли Console и Multimedia.
-          </p>
-          <div className="mt-2 flex gap-2">
-            <button
-              className="btn"
-              onClick={() => { playSelect(); setAudioOpen(true); }}
-            >
-              🎧 Выбрать устройство…
-            </button>
-            <button
-              className="btn"
-              title="На крайний случай — родное окно Windows"
-              onClick={async () => {
-                try { await (api as any).OpenWindowsSoundSettings(); }
-                catch (e) { api.Toast("error", "Не открылось: " + String(e)); }
-              }}
-            >
-              ⚙ Системные параметры
-            </button>
-          </div>
+      </section>
+
+      <section className="card p-4">
+        <div className="text-xs uppercase tracking-wide text-muted">Устройства</div>
+        <p className="mt-2 text-xs text-muted">
+          Те же пикеры, что в shell-режиме на 🎛 (Back на геймпаде):
+          монитор, аудио-устройство по умолчанию, Bluetooth.
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            className="btn"
+            disabled={!onOpenMonitorPicker}
+            onClick={() => {
+              if (!onOpenMonitorPicker) {
+                api.Toast("info", "Выбор монитора доступен в shell-режиме (или через Параметры Windows).");
+                return;
+              }
+              playSelect();
+              onOpenMonitorPicker();
+            }}
+            title={onOpenMonitorPicker
+              ? "Откроет тот же выбор монитора, что 🖥 в DevicesMenu / на главном."
+              : "Только в shell-режиме — обычное окно не растягивается на всю виртуальную область, чтобы не сдвинуть себя на другой экран."}
+          >
+            🖥 Монитор…
+          </button>
+          <button
+            className="btn"
+            onClick={() => {
+              playSelect();
+              if (onOpenAudioPicker) onOpenAudioPicker();
+              else setAudioOpen(true);
+            }}
+            title="Пикер двух колонок (вывод/ввод). A — назначить дефолтом."
+          >
+            🎧 Аудио…
+          </button>
+          <button
+            className="btn opacity-60"
+            disabled
+            title="Пикер парных BT-устройств — в v0.10.1. Пока используй системные настройки."
+          >
+            📶 Bluetooth… <span className="ml-1 text-[10px] text-muted">(v0.10.1)</span>
+          </button>
+          <button
+            className="btn"
+            title="На крайний случай — родное окно Windows"
+            onClick={async () => {
+              try { await (api as any).OpenWindowsSoundSettings(); }
+              catch (e) { api.Toast("error", "Не открылось: " + String(e)); }
+            }}
+          >
+            ⚙ Параметры Windows → Звук
+          </button>
         </div>
       </section>
 

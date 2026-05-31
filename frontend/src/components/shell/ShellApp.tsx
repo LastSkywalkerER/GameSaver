@@ -3,12 +3,22 @@
 // from the regular desktop UI: animated background, hero panel, carousel
 // of tiles, corner icons. Designed to be controller-driven first.
 //
-// Controller bindings (in addition to the global "B closes drawer, Start
-// cycles overlays" already in App.tsx):
-//   d-pad / LS left, right    move carousel  +  playMove()
-//   A                          launch active  +  playSelect()
-//   Y                          open Details   +  playSelect()
-//   B                          close overlay  +  playBack()
+// v0.10.0 controller layout (rule #1: every UI surface reachable from
+// the gamepad):
+//   d-pad ← →        move carousel  +  playMove()
+//   d-pad ↑          jump focus from carousel up to the corner icons row
+//   d-pad ↓          jump focus from corner icons back down to carousel
+//   A                if on carousel: launch active game.
+//                    if on corner icons: fire the focused icon.
+//   Y                open Settings (full-screen shell page, not modal)
+//   X                open Game Details drawer for the active game
+//   Start            open Power menu (lock / sleep / reboot / exit)
+//   Back / Select    open Devices chooser (monitor / audio / Bluetooth)
+//   B                close whatever overlay is on top; otherwise no-op
+//
+// The Backups modal still exists but it's reached via the ⛁ corner
+// icon, not a controller face button — picking a monitor / output
+// is far more frequent in daily use than browsing backups.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, EventsOn, type GameView, type UpdateInfo } from "../../api";
@@ -24,18 +34,19 @@ import {
 } from "../../sound";
 import { GameDrawer } from "../GameDrawer";
 import { BackupsPage } from "../../pages/BackupsPage";
-import { SettingsPage } from "../../pages/SettingsPage";
 import { Modal } from "../Modal";
-import { CornerIcons } from "./CornerIcons";
+import { CornerIcons, CORNER_ICON_ORDER } from "./CornerIcons";
 import { GameCarousel } from "./GameCarousel";
 import { HeroPanel } from "./HeroPanel";
 import { ShellBackground } from "./ShellBackground";
-import { MonitorPicker, type Monitor, type PickPrep } from "./MonitorPicker";
+import { ShellSettingsPage } from "./ShellSettingsPage";
+import { MonitorPicker, type PickPrep } from "./MonitorPicker";
 import { AudioPicker } from "./AudioPicker";
+import { DevicesMenu } from "./DevicesMenu";
 import { PowerMenu } from "./PowerMenu";
 import { ShellUpdateModal } from "./ShellUpdateModal";
 
-type Overlay = "none" | "details" | "settings" | "backups" | "power";
+type Overlay = "none" | "details" | "settings" | "backups" | "power" | "devices";
 
 export function ShellApp({
   games,
@@ -45,14 +56,9 @@ export function ShellApp({
 }: {
   games: GameView[];
   refresh: () => void;
-  // Update info & dismiss callback owned by App.tsx — App captures the
-  // 'update:available' event regardless of mode so we get the same data
-  // here; ShellUpdateModal is the controller-friendly surface for it.
   update: UpdateInfo | null;
   onDismissUpdate: () => void;
 }) {
-  // Sort: recent-played first so the most-likely-to-play game lands under
-  // the cursor on logon. Falls back to alphabetical for never-played games.
   const sorted = useMemo(() => {
     const arr = games.filter((g) => !g.game.hidden);
     return arr.sort((a, b) => {
@@ -65,28 +71,19 @@ export function ShellApp({
 
   const [activeIdx, setActiveIdx] = useState(0);
   const [overlay, setOverlay] = useState<Overlay>("none");
+  // Which row owns d-pad-left/right: -1 = carousel, 0..N-1 = corner icons.
+  // d-pad ↑ on the carousel jumps to the icon row; d-pad ↓ on the icons
+  // jumps back to the carousel.
+  const [cornerFocus, setCornerFocus] = useState<number>(-1);
   const padOn = useControllerConnected();
 
-  // Monitor picker. We deliberately show it on EVERY shell launch (and on
-  // demand via the power menu / corner icon) rather than silently
-  // re-applying a remembered choice — because after sleep a monitor can go
-  // dark while still "attached", and a silent re-apply would land the UI
-  // on the dead screen with no way out. PrepareMonitorPick re-enables all
-  // displays and spans our window across the whole virtual desktop, so the
-  // picker is visible on whatever screen is actually lit.
   const [pickPrep, setPickPrep] = useState<PickPrep | null>(null);
   const pickerOpen = pickPrep !== null;
 
-  // Audio picker (output/input device). Opens:
-  //   1. once on shell startup right after the monitor pick closes — so a
-  //      controller user sets monitor + audio device in one flow before
-  //      seeing the carousel. Chain fires only on first launch (guard
-  //      below), not when the user re-picks a monitor from the corner icon.
-  //   2. on demand from the 🎧 corner icon or from Settings.
+  // Audio picker is now opened either as the second leg of the on-boot
+  // monitor→audio chain, or via the Devices chooser modal. The corner
+  // icon for audio is gone in v0.10.0 — Devices is one button now.
   const [audioOpen, setAudioOpen] = useState(false);
-  // True until the first MonitorPicker.onDone has fired; controls the
-  // one-time chain so subsequent monitor switches don't drag the audio
-  // picker back open.
   const audioAutoChainRef = useRef<boolean>(true);
 
   const openPicker = useCallback(async () => {
@@ -95,10 +92,6 @@ export function ShellApp({
       if (prep && Array.isArray(prep.monitors) && prep.monitors.length >= 2) {
         setPickPrep(prep as PickPrep);
       } else {
-        // Only one display — nothing to choose. Make sure the window is
-        // back on it (PrepareMonitorPick may have spanned us). Still
-        // chain into the audio picker on first startup so a
-        // single-display + controller user gets the audio prompt.
         try { await api.CancelMonitorPick(); } catch {}
         setPickPrep(null);
         if (audioAutoChainRef.current) {
@@ -113,47 +106,29 @@ export function ShellApp({
 
   // After the user commits a monitor, MakeSole disabling the others
   // changes the topology — which our display.Watch picks up and would
-  // otherwise treat as "re-show the picker", looping forever. We instead
-  // enter a SETTLING window: for ~30 s after a pick we ignore topology
-  // changes (the physical re-handshake/dribble) and just silently re-
-  // assert the chosen monitor, so it sticks. Only changes AFTER the
-  // window (e.g. a genuine wake-from-sleep much later) reopen the picker.
+  // otherwise treat as "re-show the picker", looping forever. 30s
+  // settling window for re-assertion, 20s suppression for sleep/lock.
   const committedRef = useRef<string>("");
   const lastCommitRef = useRef<number>(0);
   const changeTimerRef = useRef<number | null>(null);
   const SETTLE_MS = 30000;
-
-  // Hard mute on display:changed handling until this wall-clock time.
-  // Armed before Lock/Sleep: the displays powering down would otherwise
-  // reopen the picker (and re-enabling monitors aborts the sleep). The
-  // window is wall-clock based, so a wake hours later — when Date.now()
-  // is far past suppressUntil — is NOT muted and the picker shows as it
-  // should.
   const suppressUntilRef = useRef<number>(0);
   const armSuppress = useCallback(() => { suppressUntilRef.current = Date.now() + 20000; }, []);
 
   useEffect(() => {
     openPicker();
-
     const handle = () => {
-      // Coalesce bursts of display:changed (a single re-handshake fires
-      // several) — act 3 s after the dust settles.
       if (changeTimerRef.current) window.clearTimeout(changeTimerRef.current);
       changeTimerRef.current = window.setTimeout(async () => {
-        // Muted (Lock/Sleep in progress) — leave displays alone entirely.
         if (Date.now() < suppressUntilRef.current) return;
         const sincePick = Date.now() - lastCommitRef.current;
         if (committedRef.current && sincePick < SETTLE_MS) {
-          // Still settling after our own pick — re-assert the choice
-          // silently instead of reopening the picker. A no-op once the
-          // topology has truly narrowed to the one monitor.
           try { await api.MakeSoleMonitor(committedRef.current); } catch (e) { console.warn("re-assert monitor", e); }
           return;
         }
         openPicker();
       }, 3000);
     };
-
     const off = EventsOn("display:changed", handle);
     return () => {
       try { (off as any)?.(); } catch {}
@@ -161,16 +136,12 @@ export function ShellApp({
     };
   }, [openPicker]);
 
-  // Keep activeIdx in range when the list shrinks (e.g. a hidden flag flips).
   useEffect(() => {
     if (activeIdx >= sorted.length) setActiveIdx(Math.max(0, sorted.length - 1));
   }, [sorted.length, activeIdx]);
 
   const active = sorted[activeIdx] ?? null;
 
-  // Shared cursor mover — used by controller nav, keyboard arrows, and
-  // mouse wheel. Plays the move sound only when the cursor actually
-  // shifts (so holding ← at the leftmost tile doesn't tick endlessly).
   const moveCursor = useCallback((delta: number) => {
     setActiveIdx((i) => {
       const next = Math.max(0, Math.min(sorted.length - 1, i + delta));
@@ -179,93 +150,138 @@ export function ShellApp({
     });
   }, [sorted.length]);
 
-  // ── Controller navigation ────────────────────────────────────────────
-  // While the monitor picker is up, every input goes to it — otherwise a
-  // d-pad left in the picker would also shift the carousel cursor behind
-  // it, and A would launch a game instead of confirming the picker.
-  // ShellUpdateModal is only shown after the monitor + audio pickers are
-  // dismissed (queued in render below). When it IS up it owns input,
-  // same as the pickers.
+  // Walk the corner-icon row. Same 100 ms debounce as everywhere else.
+  const lastIconMove = useRef(0);
+  const moveCornerFocus = useCallback((delta: number) => {
+    const now = Date.now();
+    if (now - lastIconMove.current < 100) return;
+    lastIconMove.current = now;
+    setCornerFocus((i) => {
+      const max = CORNER_ICON_ORDER.length - 1;
+      const next = Math.max(0, Math.min(max, i + delta));
+      if (next !== i) playMove();
+      return next;
+    });
+  }, []);
+
+  // Activate the focused corner icon. Cuts through to the global hook
+  // CornerIcons published when it mounted — keeps the action wiring
+  // colocated with the rendering of the icon.
+  function fireFocusedIcon() {
+    if (cornerFocus < 0) return;
+    playSelect();
+    (window as any).__gsCornerActivate?.(cornerFocus);
+  }
+
+  // ── Controller / input gating ────────────────────────────────────────
+  // While a picker/overlay is up, the carousel must ignore d-pad/A so a
+  // left-press in the picker doesn't also shift the cursor behind it.
+  const devicesMenuOpen = overlay === "devices";
   const updateModalOpen = update !== null && update.available && !pickerOpen && !audioOpen;
-  const inputBlocked = overlay !== "none" || pickerOpen || audioOpen || updateModalOpen;
+  const overlayBlocks =
+    overlay === "details" ||
+    overlay === "backups" ||
+    overlay === "settings" ||
+    overlay === "power" ||
+    overlay === "devices";
+  const inputBlocked = overlayBlocks || pickerOpen || audioOpen || updateModalOpen;
+
   useControllerNav((dir) => {
     if (inputBlocked) return;
-    if (dir === "left")  moveCursor(-1);
-    if (dir === "right") moveCursor(+1);
+    if (cornerFocus >= 0) {
+      // Focus is on the corner icon row.
+      if (dir === "left")       moveCornerFocus(-1);
+      else if (dir === "right") moveCornerFocus(+1);
+      else if (dir === "down")  { playMove(); setCornerFocus(-1); }
+      // up while already on the icons = no-op (nowhere to go).
+      return;
+    }
+    // Focus is on the carousel.
+    if (dir === "left")        moveCursor(-1);
+    else if (dir === "right")  moveCursor(+1);
+    else if (dir === "up")     { playMove(); setCornerFocus(0); }
+    // down on carousel = no-op (no row below).
   });
 
   useControllerButton((btn) => {
-    if (pickerOpen || audioOpen || updateModalOpen) return; // picker / update modal own the controller
-    if (overlay !== "none") {
-      if (btn === "b") {
-        playBack();
-        setOverlay("none");
-      }
+    if (pickerOpen || audioOpen || updateModalOpen) return;
+    if (overlayBlocks) {
+      // Overlays handle their own B-to-close inside their components
+      // (PowerMenu / DevicesMenu / GameDrawer / Modal-via-Esc). Leave
+      // the rest alone.
       return;
     }
-    if (btn === "a" && active) {
-      doLaunch(active);
-    } else if (btn === "y" && active) {
-      playSelect();
-      setOverlay("details");
-    } else if (btn === "x") {
-      // X is the only otherwise-unused face button — bind it to the
-      // power menu so Lock/Sleep/Exit are reachable from controller.
-      playSelect();
-      setOverlay("power");
-    } else if (btn === "start") {
+    if (btn === "a") {
+      if (cornerFocus >= 0) { fireFocusedIcon(); return; }
+      if (active) doLaunch(active);
+    } else if (btn === "y") {
       playSelect();
       setOverlay("settings");
+    } else if (btn === "x" && active) {
+      playSelect();
+      setOverlay("details");
+    } else if (btn === "start") {
+      playSelect();
+      setOverlay("power");
     } else if (btn === "back") {
       playSelect();
-      setOverlay("backups");
+      setOverlay("devices");
+    } else if (btn === "b") {
+      // B on the carousel does nothing (no overlay to close). But if
+      // the user happens to be focused on the icon row, B drops focus
+      // back to the carousel — same shape as down.
+      if (cornerFocus >= 0) { playBack(); setCornerFocus(-1); }
     }
   });
 
-  // ── Keyboard navigation ─────────────────────────────────────────────
-  // Arrow keys mirror d-pad, Enter mirrors A, Escape mirrors B. Lets
-  // mouse-and-keyboard users drive the shell UI without a controller.
+  // ── Keyboard ────────────────────────────────────────────────────────
+  // Arrow keys mirror d-pad, Enter mirrors A, Escape mirrors B,
+  // i=Y (info), p=Start (power), d=Back (devices). For users without
+  // a controller. Inputs in overlays are NOT hijacked.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Don't hijack typing inside the Settings overlay's inputs etc.
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
-      if (pickerOpen || audioOpen || updateModalOpen) return; // picker / update modal own the keyboard
-      if (overlay !== "none") {
+      if (pickerOpen || audioOpen || updateModalOpen) return;
+      if (overlayBlocks) {
         if (e.key === "Escape") { e.preventDefault(); playBack(); setOverlay("none"); }
         return;
       }
-      if (e.key === "ArrowLeft")  { e.preventDefault(); moveCursor(-1); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); moveCursor(+1); }
-      else if (e.key === "Enter" && active) { e.preventDefault(); doLaunch(active); }
-      else if (e.key === "Escape" || e.key.toLowerCase() === "i") {
-        // 'i' for "info" — mouse-keyboard counterpart of controller's Y.
-        if (e.key.toLowerCase() === "i" && active) {
-          e.preventDefault();
-          playSelect();
-          setOverlay("details");
-        }
+      if (e.key === "ArrowLeft")       { e.preventDefault();
+        if (cornerFocus >= 0) moveCornerFocus(-1); else moveCursor(-1);
+      } else if (e.key === "ArrowRight") { e.preventDefault();
+        if (cornerFocus >= 0) moveCornerFocus(+1); else moveCursor(+1);
+      } else if (e.key === "ArrowUp")   { e.preventDefault();
+        if (cornerFocus < 0) { playMove(); setCornerFocus(0); }
+      } else if (e.key === "ArrowDown") { e.preventDefault();
+        if (cornerFocus >= 0) { playMove(); setCornerFocus(-1); }
+      } else if (e.key === "Enter") { e.preventDefault();
+        if (cornerFocus >= 0) fireFocusedIcon();
+        else if (active) doLaunch(active);
+      } else if (e.key.toLowerCase() === "i" && active) {
+        e.preventDefault(); playSelect(); setOverlay("details");
+      } else if (e.key.toLowerCase() === "p") {
+        e.preventDefault(); playSelect(); setOverlay("power");
+      } else if (e.key.toLowerCase() === "d") {
+        e.preventDefault(); playSelect(); setOverlay("devices");
+      } else if (e.key === ",") {
+        // Common "settings" shortcut.
+        e.preventDefault(); playSelect(); setOverlay("settings");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [overlay, active, moveCursor, pickerOpen, audioOpen, updateModalOpen]);
+  }, [overlayBlocks, active, moveCursor, moveCornerFocus, cornerFocus, pickerOpen, audioOpen, updateModalOpen]);
 
-  // ── Mouse-wheel navigation ──────────────────────────────────────────
-  // One wheel notch (or one trackpad scroll-step) advances the carousel
-  // by one tile. Wheel events fire fast on trackpads — throttle to ~150 ms
-  // so a single swipe doesn't shoot past 5 games.
+  // ── Mouse wheel ─────────────────────────────────────────────────────
   const wheelLockRef = useRef(0);
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (overlay !== "none" || pickerOpen || audioOpen || updateModalOpen) return;
+      if (inputBlocked) return;
       const now = Date.now();
       if (now - wheelLockRef.current < 150) return;
-      // deltaY > 0 = scroll down/forward → next tile.
-      // We also accept horizontal wheel (deltaX) for trackpads doing
-      // left/right scroll gestures.
       const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
       if (d === 0) return;
       wheelLockRef.current = now;
@@ -273,7 +289,7 @@ export function ShellApp({
     };
     window.addEventListener("wheel", onWheel, { passive: true });
     return () => window.removeEventListener("wheel", onWheel);
-  }, [overlay, moveCursor, pickerOpen, audioOpen, updateModalOpen]);
+  }, [inputBlocked, moveCursor]);
 
   async function doLaunch(g: GameView) {
     playSelect();
@@ -284,37 +300,21 @@ export function ShellApp({
     }
     try {
       await api.LaunchGame(g.game.id, inst.id);
-      // Get out of the game's way: our fullscreen shell window is the
-      // foreground, and games launched via Steam/Epic can't steal
-      // foreground from us (Windows foreground lock), so they come up
-      // BEHIND us. Minimising clears the blocker; RestoreSelf fires when
-      // the playtime tracker sees the game exit.
       api.MinimizeSelf();
     } catch (e) {
       api.Toast("error", "Не удалось запустить: " + String(e));
     }
   }
 
-  // Bring the shell back when a game session ends. The playtime tracker
-  // emits "playtime:changed" with endedAt when a tracked exe disappears;
-  // we restore + raise our window so the user lands back on the carousel
-  // instead of a black screen (no Explorer behind us in shell mode).
+  // Bring the shell back when a game session ends.
   useEffect(() => {
     const off = EventsOn("playtime:changed", (p: any) => {
-      if (p && p.endedAt) {
-        api.RestoreSelf();
-      }
+      if (p && p.endedAt) api.RestoreSelf();
     });
     return () => { try { (off as any)?.(); } catch {} };
   }, []);
 
-  // ── Ambient menu drone ──────────────────────────────────────────────
-  // A very quiet procedural pad while the menu is up — turns off when
-  // the window is hidden (game launched / user minimised the shell), or
-  // when the sound pack is "off". The AudioContext can't auto-start on
-  // page load due to autoplay policy, so we wait for the first user
-  // gesture (mousemove, keydown, controller event) before kicking it
-  // off; visibilitychange handles the resume/pause cycle after that.
+  // ── Ambient menu drone — see sound.ts for the lifecycle rationale. ───
   useEffect(() => {
     let stopped = false;
     const start = () => {
@@ -327,9 +327,6 @@ export function ShellApp({
       if (document.hidden) stopAmbient();
       else start();
     };
-    // Any of these gestures unlocks the AudioContext. After the first
-    // one we remove the listeners — visibilitychange takes over for
-    // suspend/resume.
     const onGesture = () => {
       start();
       window.removeEventListener("pointerdown", onGesture);
@@ -343,9 +340,6 @@ export function ShellApp({
     window.addEventListener("pointerdown", onGesture);
     window.addEventListener("keydown", onGesture);
     window.addEventListener("wheel", onGesture);
-    // If the user has already interacted with the page (e.g. the monitor
-    // picker captured a controller A press before this effect armed),
-    // start immediately.
     start();
     return () => {
       stopped = true;
@@ -358,16 +352,24 @@ export function ShellApp({
     };
   }, []);
 
+  // Settings as a page renders OVER the carousel — the Settings page
+  // owns the screen while overlay === "settings", with the animated
+  // blob background instead of the active game's art (per the user
+  // brief: "с нашим дефолтным анимированным фоном").
+  if (overlay === "settings") {
+    return (
+      <ShellSettingsPage
+        onClose={() => { playBack(); setOverlay("none"); }}
+        onOpenMonitorPicker={() => openPicker()}
+        onOpenAudioPicker={() => setAudioOpen(true)}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 overflow-hidden text-gray-100">
       <ShellBackground game={active} />
 
-      {/* Top-left: controller status + button hints. The hint row only
-          renders when a controller is connected — without one, hints are
-          irrelevant (keyboard hints would be wrong) and we keep the
-          corner clean. The 🎮 chip sits inside even when no controller
-          is detected so the user gets a clear "not connected" signal
-          rather than wondering why their pad doesn't work. */}
       <div className="absolute left-6 top-6 z-20 flex items-center gap-3">
         <span
           className={
@@ -383,29 +385,21 @@ export function ShellApp({
         {padOn && (
           <span className="hidden gap-4 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-gray-300 backdrop-blur-md sm:flex">
             <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">A</kbd> запустить</span>
-            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Y</kbd> подробнее</span>
-            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">X</kbd> питание</span>
-            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Start</kbd> настройки</span>
-            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Back</kbd> бэкапы</span>
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">X</kbd> подробнее</span>
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Y</kbd> настройки</span>
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Back</kbd> устройства</span>
+            <span><kbd className="rounded bg-white/10 px-1.5 py-0.5">Start</kbd> питание</span>
           </span>
         )}
       </div>
 
       <CornerIcons
-        onSwitchMonitor={() => { playSelect(); openPicker(); }}
-        onSwitchAudio={() => { playSelect(); setAudioOpen(true); }}
+        onPickDevices={() => { playSelect(); setOverlay("devices"); }}
         onPower={() => { playSelect(); setOverlay("power"); }}
         onSettings={() => { playSelect(); setOverlay("settings"); }}
         onBackups={() => { playSelect(); setOverlay("backups"); }}
-        onExit={async () => {
-          playBack();
-          // Bring the other monitors back before we hand control back to
-          // Explorer — otherwise the user logs in to a single-screen
-          // setup and has to fix it in Windows display settings.
-          try { await api.RestoreMonitorConfig(); } catch (e) { console.warn("restore monitors", e); }
-          try { localStorage.removeItem("gs:soleMonitorId"); } catch {}
-          api.QuitApp();
-        }}
+        focused={cornerFocus}
+        onFocusChange={(i) => setCornerFocus(i)}
       />
 
       <HeroPanel
@@ -416,7 +410,7 @@ export function ShellApp({
       <GameCarousel
         games={sorted}
         activeIdx={activeIdx}
-        onSelect={(i) => { if (i !== activeIdx) playMove(); setActiveIdx(i); }}
+        onSelect={(i) => { if (i !== activeIdx) playMove(); setActiveIdx(i); setCornerFocus(-1); }}
       />
 
       {overlay === "details" && active && (
@@ -427,20 +421,12 @@ export function ShellApp({
         />
       )}
       <Modal
-        open={overlay === "settings"}
-        title="Настройки"
-        onClose={() => { playBack(); setOverlay("none"); }}
-      >
-        <div className="max-h-[70vh] overflow-y-auto">
-          <SettingsPage />
-        </div>
-      </Modal>
-      <Modal
         open={overlay === "backups"}
         title="Бэкапы"
+        size="6xl"
         onClose={() => { playBack(); setOverlay("none"); }}
       >
-        <div className="max-h-[70vh] overflow-y-auto">
+        <div className="max-h-[75vh] overflow-y-auto">
           <BackupsPage games={games} />
         </div>
       </Modal>
@@ -451,16 +437,9 @@ export function ShellApp({
           onDone={(chosenId) => {
             setPickPrep(null);
             if (chosenId) {
-              // Arm the settling window so the topology churn from
-              // disabling the other monitors doesn't bounce the picker
-              // straight back open.
               committedRef.current = chosenId;
               lastCommitRef.current = Date.now();
             }
-            // First monitor pick of the session → chain straight into the
-            // audio picker. After that the user can re-open either picker
-            // separately from the corner icons. Guard so re-picking a
-            // monitor mid-session doesn't drag audio back open.
             if (audioAutoChainRef.current) {
               audioAutoChainRef.current = false;
               setAudioOpen(true);
@@ -474,13 +453,20 @@ export function ShellApp({
       {overlay === "power" && (
         <PowerMenu
           onClose={() => setOverlay("none")}
-          onSwitchMonitor={() => openPicker()}
           onArmSuppress={armSuppress}
           onExit={async () => {
             try { await api.RestoreMonitorConfig(); } catch (e) { console.warn("restore monitors", e); }
             try { localStorage.removeItem("gs:soleMonitorId"); } catch {}
             api.QuitApp();
           }}
+        />
+      )}
+
+      {overlay === "devices" && (
+        <DevicesMenu
+          onClose={() => setOverlay("none")}
+          onPickMonitor={() => openPicker()}
+          onPickAudio={() => setAudioOpen(true)}
         />
       )}
 
