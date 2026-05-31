@@ -94,6 +94,14 @@ export function ShellBackground({ game }: { game: GameView | null }) {
         />
       )}
 
+      {/* Left-side fade — full screen height, dies out around the middle.
+          This used to live in HeroPanel but ended at h-[55vh] there,
+          which left a visible horizontal seam where the darkening
+          stopped. Drawing it here as a tall slab keeps the title
+          readable AND lets the carousel area underneath stay tinted on
+          the left without any edge. */}
+      <div className="absolute inset-y-0 left-0 w-[55%] bg-gradient-to-r from-black/70 via-black/25 to-transparent" />
+
       {/* Darkening overlay — kept lighter than v0.5 so the art reads
           through. A vertical gradient bottoms out at ~45% so the
           carousel still has its dark plate; the top stays clearer so

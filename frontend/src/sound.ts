@@ -114,11 +114,20 @@ export function playBack()   { if (pack !== "off") play(PACK_BACK[pack]); }
 // visible — turn the screen on, hear a soft breathing chord. Same Web
 // Audio API as the navigation tones (no asset files per the rules).
 //
-// Design: three sine oscillators at a low triad (Cm9-ish — root, fifth,
-// minor seventh) plus a soft low-pass + slow LFO on the master gain so
-// it breathes instead of holding flat. Master gain caps at ~0.012 — felt
-// loud in headphones at 0.02; this is the "you only notice when it
-// stops" level the user asked for.
+// v0.9.3: the v0.9.2 default was an A-minor-7 fragment — users said it
+// read as gloomy. Replaced with a major add9 (Cmaj9-ish), and added
+// per-pack variants so the existing Settings → "Звук навигации"
+// selector also picks the drone flavour:
+//
+//   psstyle — bright warm pad (Cmaj9, sine, breathing LFO). Default.
+//   subtle  — sparse open fifth, very quiet, the "you only notice when
+//             it stops" target.
+//   retro   — 8-bit-ish boot drone: triangle thirds, a touch of detune,
+//             slightly faster LFO so it has movement.
+//   off     — silent (matches the navigation tones being off).
+//
+// Master gain caps stay around 0.012 — felt loud in headphones at 0.02;
+// this is the level the user asked for.
 //
 // Lifecycle:
 //   start() — called when the shell becomes active AND audio is allowed
@@ -131,20 +140,79 @@ export function playBack()   { if (pack !== "off") play(PACK_BACK[pack]); }
 //
 // We expose isAmbientOn() so the corner icon can show a state.
 
+type AmbientConfig = {
+  // Chord voicing in Hz. Kept low — even the highest voice sits below
+  // the speaking-voice register so the pad doesn't fight a Discord call
+  // layered on top of the menu.
+  chord: number[];
+  // Per-voice detune in cents, applied alternately +/- so the chord
+  // gets a tiny chorus-y shimmer. 0 = perfectly pure (best for very
+  // sparse voicings; chorusing two voices reads as a beat instead).
+  detuneCents: number;
+  oscType: OscillatorType;
+  // Master low-pass cutoff (Hz) — warmer the lower it is.
+  filterCutHz: number;
+  filterQ: number;
+  // Peak master gain at the apex of the LFO breath. 0.012 ≈ "ambient".
+  maxGain: number;
+  // LFO frequency for the gain breath. ~0.06-0.12 Hz = 8-16 s per cycle.
+  lfoHz: number;
+  // Fraction of maxGain the LFO swings — 0.45 means gain breathes
+  // between roughly 55% and 100% of peak.
+  lfoDepth: number;
+};
+
+const AMBIENT_PACKS: Record<Exclude<SoundPack, "off">, AmbientConfig> = {
+  // Cmaj9: C3-E3-G3-B3-D4. Bright but not glassy — the B-D pair at the
+  // top gives the "hopeful" colour without being saccharine. Sine for
+  // warmth; tiny detune for shimmer.
+  psstyle: {
+    chord: [130.81, 164.81, 196.00, 246.94, 293.66],
+    detuneCents: 4,
+    oscType: "sine",
+    filterCutHz: 1300,
+    filterQ: 0.5,
+    maxGain: 0.014,
+    lfoHz: 0.08,
+    lfoDepth: 0.40,
+  },
+  // Open-fifth pad: C2 + G3. Almost a sub — barely perceptible. Two
+  // voices, no detune (chorusing a near-octave reads as a beat, not
+  // shimmer).
+  subtle: {
+    chord: [65.41, 196.00],
+    detuneCents: 0,
+    oscType: "sine",
+    filterCutHz: 700,
+    filterQ: 0.5,
+    maxGain: 0.009,
+    lfoHz: 0.05,
+    lfoDepth: 0.50,
+  },
+  // 8-bit boot vibe: C major triad (C3-E3-G3), triangle voices with
+  // gentle detune. Brighter low-pass, slightly faster breath — feels
+  // more "console powered on" than "ambient room".
+  retro: {
+    chord: [130.81, 164.81, 196.00],
+    detuneCents: 6,
+    oscType: "triangle",
+    filterCutHz: 1800,
+    filterQ: 0.4,
+    maxGain: 0.011,
+    lfoHz: 0.12,
+    lfoDepth: 0.55,
+  },
+};
+
 type Drone = {
   oscs: OscillatorNode[];
   master: GainNode;
   lfo: OscillatorNode;
   lfoGain: GainNode;
   filter: BiquadFilterNode;
+  packAtStart: SoundPack;
 };
 let drone: Drone | null = null;
-
-// Chord intervals in Hz — picked to be low enough that even the highest
-// voice sits below the speaking voice register, so it doesn't compete
-// with anything (e.g. a Discord call) the user might layer on top.
-const AMBIENT_CHORD = [110, 164.81, 196]; // A2, E3, G3 — A minor 7 fragment
-const AMBIENT_MAX = 0.012;
 
 export function isAmbientOn(): boolean { return drone !== null; }
 
@@ -157,44 +225,48 @@ export function startAmbient() {
   if (a.state === "suspended") {
     a.resume().catch(() => { /* will retry next gesture */ });
   }
+  const cfg = AMBIENT_PACKS[pack as Exclude<SoundPack, "off">];
   const now = a.currentTime;
 
   const master = a.createGain();
   master.gain.setValueAtTime(0.0001, now);
   // 4 s fade-in so turning on doesn't pop on a cold session.
-  master.gain.exponentialRampToValueAtTime(AMBIENT_MAX, now + 4);
+  master.gain.exponentialRampToValueAtTime(cfg.maxGain, now + 4);
 
   const filter = a.createBiquadFilter();
   filter.type = "lowpass";
-  filter.frequency.setValueAtTime(900, now); // keep it warm, no sizzle
-  filter.Q.setValueAtTime(0.6, now);
+  filter.frequency.setValueAtTime(cfg.filterCutHz, now);
+  filter.Q.setValueAtTime(cfg.filterQ, now);
 
-  // Slow LFO on the master gain — "breathing" effect. ~0.07 Hz = ~14 s
-  // per cycle, slow enough to feel ambient instead of "wobbly".
+  // LFO on master gain — "breathing" effect. Slow enough to feel
+  // ambient instead of wobbly (~8-16 s per cycle depending on pack).
   const lfo = a.createOscillator();
   lfo.type = "sine";
-  lfo.frequency.setValueAtTime(0.07, now);
+  lfo.frequency.setValueAtTime(cfg.lfoHz, now);
   const lfoGain = a.createGain();
-  lfoGain.gain.setValueAtTime(AMBIENT_MAX * 0.45, now);
+  lfoGain.gain.setValueAtTime(cfg.maxGain * cfg.lfoDepth, now);
   lfo.connect(lfoGain).connect(master.gain);
   lfo.start(now);
 
   const oscs: OscillatorNode[] = [];
-  for (const hz of AMBIENT_CHORD) {
+  cfg.chord.forEach((hz, i) => {
     const o = a.createOscillator();
-    o.type = "sine";
+    o.type = cfg.oscType;
     o.frequency.setValueAtTime(hz, now);
+    // Alternate detune sign per voice for a stereo-less chorus shimmer.
+    // No-op when cfg.detuneCents == 0.
+    o.detune.setValueAtTime((i % 2 === 0 ? +1 : -1) * cfg.detuneCents, now);
     // Tiny per-voice gain so the sum doesn't clip — each voice carries
     // roughly 1/N of the headroom before they recombine in master.
     const og = a.createGain();
-    og.gain.setValueAtTime(1 / AMBIENT_CHORD.length, now);
+    og.gain.setValueAtTime(1 / cfg.chord.length, now);
     o.connect(og).connect(filter);
     o.start(now);
     oscs.push(o);
-  }
+  });
   filter.connect(master).connect(a.destination);
 
-  drone = { oscs, master, lfo, lfoGain, filter };
+  drone = { oscs, master, lfo, lfoGain, filter, packAtStart: pack };
 }
 
 export function stopAmbient() {
@@ -226,8 +298,18 @@ export function stopAmbient() {
   setTimeout(teardown, 1700);
 }
 
-// React to the user turning the sound off in Settings while the drone
-// is playing — without this the chord stays running until reload.
+// React to pack changes:
+//   off               — silence immediately;
+//   any other change  — restart so the new chord/colour takes over.
+// stopAmbient + startAmbient will crossfade nicely (1.5 s out + 4 s in),
+// so the swap is musical rather than a hard cut.
 subscribeSoundPack((p) => {
-  if (p === "off") stopAmbient();
+  if (p === "off") { stopAmbient(); return; }
+  if (drone && drone.packAtStart !== p) {
+    stopAmbient();
+    // Wait long enough for the existing fade-out to clear before
+    // bringing up the new voices — otherwise both chords overlap at
+    // peak for ~1 s and the level briefly doubles.
+    setTimeout(() => startAmbient(), 1700);
+  }
 });

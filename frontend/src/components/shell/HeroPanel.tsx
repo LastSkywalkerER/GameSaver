@@ -31,12 +31,12 @@ export function HeroPanel({
   return (
     // Height intentionally shorter than carousel-top so there's breathing
     // room between the hero's bottom and the carousel tiles — otherwise
-    // the edges line up and look like one solid cut.
+    // the edges line up and look like one solid cut. v0.9.3: removed the
+    // local left-side gradient — that gradient died at h-[55vh] which
+    // showed as a horizontal black seam across the screen. The
+    // ShellBackground now draws a FULL-HEIGHT left-side fade so the
+    // title reads against busy art without any seam.
     <div className="pointer-events-none absolute inset-x-0 top-0 flex h-[55vh] items-end overflow-hidden">
-      {/* Left-side dark gradient — narrower than v0.5 (the global BG is
-          already a bit dimmed) so the right-side art breathes more. */}
-      <div className="absolute inset-y-0 left-0 w-2/3 bg-gradient-to-r from-black/80 via-black/30 to-transparent" />
-
       {/* pb-20 lifts content up so the Play button sits comfortably away
           from the hero/carousel seam. pointer-events-auto re-enables
           clicks on the buttons (parent disables them so the area behind
