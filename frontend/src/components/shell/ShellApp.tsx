@@ -11,7 +11,7 @@
 //   B                          close overlay  +  playBack()
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, EventsOn, type GameView } from "../../api";
+import { api, EventsOn, type GameView, type UpdateInfo } from "../../api";
 import { useControllerButton, useControllerConnected, useControllerNav } from "../../controller";
 import {
   getSoundPack,
@@ -33,15 +33,23 @@ import { ShellBackground } from "./ShellBackground";
 import { MonitorPicker, type Monitor, type PickPrep } from "./MonitorPicker";
 import { AudioPicker } from "./AudioPicker";
 import { PowerMenu } from "./PowerMenu";
+import { ShellUpdateModal } from "./ShellUpdateModal";
 
 type Overlay = "none" | "details" | "settings" | "backups" | "power";
 
 export function ShellApp({
   games,
   refresh,
+  update,
+  onDismissUpdate,
 }: {
   games: GameView[];
   refresh: () => void;
+  // Update info & dismiss callback owned by App.tsx — App captures the
+  // 'update:available' event regardless of mode so we get the same data
+  // here; ShellUpdateModal is the controller-friendly surface for it.
+  update: UpdateInfo | null;
+  onDismissUpdate: () => void;
 }) {
   // Sort: recent-played first so the most-likely-to-play game lands under
   // the cursor on logon. Falls back to alphabetical for never-played games.
@@ -175,7 +183,11 @@ export function ShellApp({
   // While the monitor picker is up, every input goes to it — otherwise a
   // d-pad left in the picker would also shift the carousel cursor behind
   // it, and A would launch a game instead of confirming the picker.
-  const inputBlocked = overlay !== "none" || pickerOpen || audioOpen;
+  // ShellUpdateModal is only shown after the monitor + audio pickers are
+  // dismissed (queued in render below). When it IS up it owns input,
+  // same as the pickers.
+  const updateModalOpen = update !== null && update.available && !pickerOpen && !audioOpen;
+  const inputBlocked = overlay !== "none" || pickerOpen || audioOpen || updateModalOpen;
   useControllerNav((dir) => {
     if (inputBlocked) return;
     if (dir === "left")  moveCursor(-1);
@@ -183,7 +195,7 @@ export function ShellApp({
   });
 
   useControllerButton((btn) => {
-    if (pickerOpen || audioOpen) return; // picker owns the controller
+    if (pickerOpen || audioOpen || updateModalOpen) return; // picker / update modal own the controller
     if (overlay !== "none") {
       if (btn === "b") {
         playBack();
@@ -220,7 +232,7 @@ export function ShellApp({
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
-      if (pickerOpen || audioOpen) return; // picker owns the keyboard
+      if (pickerOpen || audioOpen || updateModalOpen) return; // picker / update modal own the keyboard
       if (overlay !== "none") {
         if (e.key === "Escape") { e.preventDefault(); playBack(); setOverlay("none"); }
         return;
@@ -239,7 +251,7 @@ export function ShellApp({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [overlay, active, moveCursor, pickerOpen, audioOpen]);
+  }, [overlay, active, moveCursor, pickerOpen, audioOpen, updateModalOpen]);
 
   // ── Mouse-wheel navigation ──────────────────────────────────────────
   // One wheel notch (or one trackpad scroll-step) advances the carousel
@@ -248,7 +260,7 @@ export function ShellApp({
   const wheelLockRef = useRef(0);
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (overlay !== "none" || pickerOpen || audioOpen) return;
+      if (overlay !== "none" || pickerOpen || audioOpen || updateModalOpen) return;
       const now = Date.now();
       if (now - wheelLockRef.current < 150) return;
       // deltaY > 0 = scroll down/forward → next tile.
@@ -261,7 +273,7 @@ export function ShellApp({
     };
     window.addEventListener("wheel", onWheel, { passive: true });
     return () => window.removeEventListener("wheel", onWheel);
-  }, [overlay, moveCursor, pickerOpen, audioOpen]);
+  }, [overlay, moveCursor, pickerOpen, audioOpen, updateModalOpen]);
 
   async function doLaunch(g: GameView) {
     playSelect();
@@ -470,6 +482,10 @@ export function ShellApp({
             api.QuitApp();
           }}
         />
+      )}
+
+      {updateModalOpen && update && (
+        <ShellUpdateModal info={update} onDismiss={onDismissUpdate} />
       )}
     </div>
   );

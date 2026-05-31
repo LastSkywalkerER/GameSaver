@@ -42,6 +42,8 @@ export function FinishMonitorPick(arg1:string):Promise<void>;
 
 export function GetAutoLoginStatus():Promise<main.AutoLoginStatus>;
 
+export function GetCachedUpdate():Promise<updater.UpdateInfo>;
+
 export function GetConfig():Promise<config.Config>;
 
 export function GetGame(arg1:string):Promise<domain.GameView>;

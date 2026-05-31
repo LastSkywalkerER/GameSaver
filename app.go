@@ -493,6 +493,16 @@ func (a *App) CheckForUpdate() (*updater.UpdateInfo, error) {
 	return info, nil
 }
 
+// GetCachedUpdate returns the most recent UpdateInfo seen by the
+// background check, or nil if we haven't seen one yet. The frontend
+// uses this on mount because Wails does NOT replay events: the
+// "update:available" emit from the startup goroutine can race ahead of
+// the React EventsOn subscription, leaving the UI with no idea an
+// update exists. The shell-mode update modal in particular relies on
+// this getter — shell mode mounts later than normal mode (after
+// GetShellModeStatus resolves) so the race window is wider there.
+func (a *App) GetCachedUpdate() *updater.UpdateInfo { return a.lastUpdate }
+
 // ApplyUpdate downloads the latest release zip, verifies its checksum,
 // replaces the running binary and returns. The caller (UI) is expected to
 // trigger a restart afterwards.

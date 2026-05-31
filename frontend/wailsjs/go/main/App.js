@@ -62,6 +62,10 @@ export function GetAutoLoginStatus() {
   return window['go']['main']['App']['GetAutoLoginStatus']();
 }
 
+export function GetCachedUpdate() {
+  return window['go']['main']['App']['GetCachedUpdate']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }

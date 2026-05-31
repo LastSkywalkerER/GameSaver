@@ -52,6 +52,14 @@ export default function App() {
   useEffect(() => {
     api.GetConfig().then((c: any) => { if (c?.language) setLanguage(c.language); });
     api.GetShellModeStatus().then((s: any) => setShellMode(!!s?.runningAsShell)).catch(() => setShellMode(false));
+    // Pull whatever the backend's already-completed update check found,
+    // since Wails doesn't replay missed events. The shell branch in
+    // particular mounts AFTER GetShellModeStatus resolves, so the
+    // startup goroutine's "update:available" emit usually lands before
+    // our EventsOn subscription armed. See app.GetCachedUpdate doc.
+    (api as any).GetCachedUpdate?.().then((u: any) => {
+      if (u && u.available) setUpdate(u as UpdateInfo);
+    }).catch(() => {});
     refresh();
 
     const offProg = EventsOn("scan:progress", (p: any) => setPhase(p?.phase + (p?.name ? ": " + p.name : "")));
@@ -155,7 +163,12 @@ export default function App() {
   if (shellMode) {
     return (
       <>
-        <ShellApp games={games} refresh={refresh} />
+        <ShellApp
+          games={games}
+          refresh={refresh}
+          update={update}
+          onDismissUpdate={() => setUpdate(null)}
+        />
         <Toaster />
       </>
     );
