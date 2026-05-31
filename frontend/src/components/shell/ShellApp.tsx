@@ -23,6 +23,7 @@ import { GameCarousel } from "./GameCarousel";
 import { HeroPanel } from "./HeroPanel";
 import { ShellBackground } from "./ShellBackground";
 import { MonitorPicker, type Monitor, type PickPrep } from "./MonitorPicker";
+import { AudioPicker } from "./AudioPicker";
 import { PowerMenu } from "./PowerMenu";
 
 type Overlay = "none" | "details" | "settings" | "backups" | "power";
@@ -60,6 +61,18 @@ export function ShellApp({
   const [pickPrep, setPickPrep] = useState<PickPrep | null>(null);
   const pickerOpen = pickPrep !== null;
 
+  // Audio picker (output/input device). Opens:
+  //   1. once on shell startup right after the monitor pick closes — so a
+  //      controller user sets monitor + audio device in one flow before
+  //      seeing the carousel. Chain fires only on first launch (guard
+  //      below), not when the user re-picks a monitor from the corner icon.
+  //   2. on demand from the 🎧 corner icon or from Settings.
+  const [audioOpen, setAudioOpen] = useState(false);
+  // True until the first MonitorPicker.onDone has fired; controls the
+  // one-time chain so subsequent monitor switches don't drag the audio
+  // picker back open.
+  const audioAutoChainRef = useRef<boolean>(true);
+
   const openPicker = useCallback(async () => {
     try {
       const prep: any = await api.PrepareMonitorPick();
@@ -67,9 +80,15 @@ export function ShellApp({
         setPickPrep(prep as PickPrep);
       } else {
         // Only one display — nothing to choose. Make sure the window is
-        // back on it (PrepareMonitorPick may have spanned us).
+        // back on it (PrepareMonitorPick may have spanned us). Still
+        // chain into the audio picker on first startup so a
+        // single-display + controller user gets the audio prompt.
         try { await api.CancelMonitorPick(); } catch {}
         setPickPrep(null);
+        if (audioAutoChainRef.current) {
+          audioAutoChainRef.current = false;
+          setAudioOpen(true);
+        }
       }
     } catch (e) {
       console.warn("PrepareMonitorPick failed", e);
@@ -148,7 +167,7 @@ export function ShellApp({
   // While the monitor picker is up, every input goes to it — otherwise a
   // d-pad left in the picker would also shift the carousel cursor behind
   // it, and A would launch a game instead of confirming the picker.
-  const inputBlocked = overlay !== "none" || pickerOpen;
+  const inputBlocked = overlay !== "none" || pickerOpen || audioOpen;
   useControllerNav((dir) => {
     if (inputBlocked) return;
     if (dir === "left")  moveCursor(-1);
@@ -156,7 +175,7 @@ export function ShellApp({
   });
 
   useControllerButton((btn) => {
-    if (pickerOpen) return; // picker owns the controller
+    if (pickerOpen || audioOpen) return; // picker owns the controller
     if (overlay !== "none") {
       if (btn === "b") {
         playBack();
@@ -193,7 +212,7 @@ export function ShellApp({
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
-      if (pickerOpen) return; // picker owns the keyboard
+      if (pickerOpen || audioOpen) return; // picker owns the keyboard
       if (overlay !== "none") {
         if (e.key === "Escape") { e.preventDefault(); playBack(); setOverlay("none"); }
         return;
@@ -212,7 +231,7 @@ export function ShellApp({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [overlay, active, moveCursor, pickerOpen]);
+  }, [overlay, active, moveCursor, pickerOpen, audioOpen]);
 
   // ── Mouse-wheel navigation ──────────────────────────────────────────
   // One wheel notch (or one trackpad scroll-step) advances the carousel
@@ -221,7 +240,7 @@ export function ShellApp({
   const wheelLockRef = useRef(0);
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (overlay !== "none" || pickerOpen) return;
+      if (overlay !== "none" || pickerOpen || audioOpen) return;
       const now = Date.now();
       if (now - wheelLockRef.current < 150) return;
       // deltaY > 0 = scroll down/forward → next tile.
@@ -234,7 +253,7 @@ export function ShellApp({
     };
     window.addEventListener("wheel", onWheel, { passive: true });
     return () => window.removeEventListener("wheel", onWheel);
-  }, [overlay, moveCursor, pickerOpen]);
+  }, [overlay, moveCursor, pickerOpen, audioOpen]);
 
   async function doLaunch(g: GameView) {
     playSelect();
@@ -304,6 +323,7 @@ export function ShellApp({
 
       <CornerIcons
         onSwitchMonitor={() => { playSelect(); openPicker(); }}
+        onSwitchAudio={() => { playSelect(); setAudioOpen(true); }}
         onPower={() => { playSelect(); setOverlay("power"); }}
         onSettings={() => { playSelect(); setOverlay("settings"); }}
         onBackups={() => { playSelect(); setOverlay("backups"); }}
@@ -367,9 +387,19 @@ export function ShellApp({
               committedRef.current = chosenId;
               lastCommitRef.current = Date.now();
             }
+            // First monitor pick of the session → chain straight into the
+            // audio picker. After that the user can re-open either picker
+            // separately from the corner icons. Guard so re-picking a
+            // monitor mid-session doesn't drag audio back open.
+            if (audioAutoChainRef.current) {
+              audioAutoChainRef.current = false;
+              setAudioOpen(true);
+            }
           }}
         />
       )}
+
+      {audioOpen && <AudioPicker onDone={() => setAudioOpen(false)} />}
 
       {overlay === "power" && (
         <PowerMenu

@@ -94,6 +94,10 @@ export function LaunchGame(arg1, arg2) {
   return window['go']['main']['App']['LaunchGame'](arg1, arg2);
 }
 
+export function ListAudioDevices() {
+  return window['go']['main']['App']['ListAudioDevices']();
+}
+
 export function ListGames() {
   return window['go']['main']['App']['ListGames']();
 }
@@ -192,6 +196,10 @@ export function SetAutoCheckUpdates(arg1) {
 
 export function SetBackupRoot(arg1) {
   return window['go']['main']['App']['SetBackupRoot'](arg1);
+}
+
+export function SetDefaultAudioDevice(arg1) {
+  return window['go']['main']['App']['SetDefaultAudioDevice'](arg1);
 }
 
 export function SetLanguage(arg1) {

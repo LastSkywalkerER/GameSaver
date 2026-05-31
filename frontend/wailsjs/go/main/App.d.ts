@@ -7,6 +7,7 @@ import {match} from '../models';
 import {main} from '../models';
 import {config} from '../models';
 import {sunshine} from '../models';
+import {audio} from '../models';
 import {display} from '../models';
 import {backup} from '../models';
 import {pipeline} from '../models';
@@ -57,6 +58,8 @@ export function IsWatcherEnabled():Promise<boolean>;
 
 export function LaunchGame(arg1:string,arg2:string):Promise<void>;
 
+export function ListAudioDevices():Promise<Array<audio.Device>>;
+
 export function ListGames():Promise<Array<domain.GameView>>;
 
 export function ListMonitors():Promise<Array<display.Monitor>>;
@@ -106,6 +109,8 @@ export function SearchManifest(arg1:string,arg2:number):Promise<Array<match.Mani
 export function SetAutoCheckUpdates(arg1:boolean):Promise<void>;
 
 export function SetBackupRoot(arg1:string):Promise<void>;
+
+export function SetDefaultAudioDevice(arg1:string):Promise<void>;
 
 export function SetLanguage(arg1:string):Promise<void>;
 

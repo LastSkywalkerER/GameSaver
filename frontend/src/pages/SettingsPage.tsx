@@ -4,6 +4,7 @@ import { Modal } from "../components/Modal";
 import { setLanguage, useT } from "../i18n";
 import { TILE_PREF_LABELS, setTilePref, useTilePrefs, type TilePrefs } from "../tilePrefs";
 import { confirmModal } from "../components/Modal";
+import { AudioPicker } from "../components/shell/AudioPicker";
 import {
   SOUND_PACK_LABELS,
   getSoundPack,
@@ -35,6 +36,7 @@ export function SettingsPage() {
   const [sunLog, setSunLog] = useState<string[]>([]);
   const [sunResult, setSunResult] = useState<"ok" | "err" | null>(null);
   const sunLogEndRef = useRef<HTMLDivElement | null>(null);
+  const [audioOpen, setAudioOpen] = useState(false);
   const [soundPack, setSoundPackState] = useState<SoundPack>(() => getSoundPack());
   useEffect(() => subscribeSoundPack(setSoundPackState), []);
   const tilePrefs = useTilePrefs();
@@ -381,20 +383,30 @@ export function SettingsPage() {
           </div>
         )}
         <div className="mt-4 border-t border-border pt-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted">Устройство вывода</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">Устройство по умолчанию</div>
           <p className="mt-1 text-xs text-muted">
-            Откроет системные «Параметры → Звук». Встроенный селектор
-            устройств добавим в v0.6.4.
+            Встроенный пикер — две колонки (вывод/ввод), геймпадом
+            ←→/LB/RB переключают колонку, ↑↓ выбирают, A назначает.
+            Меняет дефолт Windows для роли Console и Multimedia.
           </p>
-          <button
-            className="btn mt-2"
-            onClick={async () => {
-              try { await (api as any).OpenWindowsSoundSettings(); }
-              catch (e) { api.Toast("error", "Не открылось: " + String(e)); }
-            }}
-          >
-            🔊 Открыть «Параметры → Звук»
-          </button>
+          <div className="mt-2 flex gap-2">
+            <button
+              className="btn"
+              onClick={() => { playSelect(); setAudioOpen(true); }}
+            >
+              🎧 Выбрать устройство…
+            </button>
+            <button
+              className="btn"
+              title="На крайний случай — родное окно Windows"
+              onClick={async () => {
+                try { await (api as any).OpenWindowsSoundSettings(); }
+                catch (e) { api.Toast("error", "Не открылось: " + String(e)); }
+              }}
+            >
+              ⚙ Системные параметры
+            </button>
+          </div>
         </div>
       </section>
 
@@ -510,6 +522,8 @@ export function SettingsPage() {
           </div>
         </div>
       </section>
+
+      {audioOpen && <AudioPicker onDone={() => setAudioOpen(false)} />}
 
       <Modal
         open={sunModal}

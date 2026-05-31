@@ -15,6 +15,7 @@ import (
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"GameSaver/internal/audio"
 	"GameSaver/internal/autologin"
 	"GameSaver/internal/backup"
 	"GameSaver/internal/config"
@@ -1012,6 +1013,17 @@ func pickInstallation(gv *domain.GameView) *domain.Installation {
 	}
 	return best
 }
+
+// ===== Audio devices (in-app default-device picker) =====
+
+// ListAudioDevices returns the active render (output) + capture (input)
+// endpoints. Each entry has the current-default flag set so the UI knows
+// what to highlight.
+func (a *App) ListAudioDevices() ([]audio.Device, error) { return audio.List() }
+
+// SetDefaultAudioDevice makes deviceID the default for Console + Multimedia
+// roles (matches the Windows Sound dialog's "Set Default" behavior).
+func (a *App) SetDefaultAudioDevice(deviceID string) error { return audio.SetDefault(deviceID) }
 
 // OpenWindowsSoundSettings opens the classic Sound control panel
 // (mmsys.cpl, "Playback" tab). We deliberately avoid the modern

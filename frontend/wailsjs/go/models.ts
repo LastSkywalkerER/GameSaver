@@ -1,3 +1,26 @@
+export namespace audio {
+	
+	export class Device {
+	    id: string;
+	    name: string;
+	    dataFlow: string;
+	    isDefault: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Device(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.dataFlow = source["dataFlow"];
+	        this.isDefault = source["isDefault"];
+	    }
+	}
+
+}
+
 export namespace backup {
 	
 	export class ReconcileResult {

@@ -8,12 +8,14 @@ import { useState } from "react";
 
 export function CornerIcons({
   onSwitchMonitor,
+  onSwitchAudio,
   onPower,
   onSettings,
   onBackups,
   onExit,
 }: {
   onSwitchMonitor: () => void;
+  onSwitchAudio: () => void;
   onPower: () => void;
   onSettings: () => void;
   onBackups: () => void;
@@ -35,6 +37,7 @@ export function CornerIcons({
         {sound ? "🔊" : "🔇"}
       </IconButton>
       <IconButton title="Сменить монитор" onClick={onSwitchMonitor}>🖥</IconButton>
+      <IconButton title="Сменить аудио-устройство" onClick={onSwitchAudio}>🎧</IconButton>
       <IconButton title="Бэкапы" onClick={onBackups}>⛁</IconButton>
       <IconButton title="Настройки" onClick={onSettings}>⚙</IconButton>
       <IconButton title="Питание (Lock / Sleep / Exit) — X на геймпаде" onClick={onPower}>⏻</IconButton>
