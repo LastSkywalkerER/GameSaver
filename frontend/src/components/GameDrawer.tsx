@@ -63,6 +63,16 @@ export function GameDrawer({
       .filter((el) => el.offsetParent !== null);
   }, []);
 
+  // WebView2 won't paint :focus-visible on programmatic .focus(), so
+  // we mark the active element with data-gs-focused="true" — see
+  // style.css for the matching CSS rule.
+  function setGamepadFocus(target: HTMLElement) {
+    document.querySelectorAll<HTMLElement>('[data-gs-focused="true"]')
+      .forEach((el) => el.removeAttribute("data-gs-focused"));
+    target.setAttribute("data-gs-focused", "true");
+    target.focus();
+  }
+
   function moveDrawerFocus(delta: number) {
     const els = collectFocusables();
     if (!els.length) return;
@@ -71,7 +81,7 @@ export function GameDrawer({
     const next = Math.max(0, Math.min(els.length - 1, (i < 0 ? 0 : i) + delta));
     if (next === i) return;
     const target = els[next];
-    target.focus();
+    setGamepadFocus(target);
     target.scrollIntoView({ block: "nearest", behavior: "smooth" });
     playMove();
   }
@@ -109,7 +119,7 @@ export function GameDrawer({
   useEffect(() => {
     const t = setTimeout(() => {
       const els = collectFocusables();
-      els[0]?.focus({ preventScroll: true });
+      if (els[0]) setGamepadFocus(els[0]);
     }, 50);
     return () => clearTimeout(t);
   }, [collectFocusables, view.game.id]);

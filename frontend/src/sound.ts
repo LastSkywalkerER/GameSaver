@@ -119,10 +119,10 @@ export function playBack()   { play(TONE_BACK); }
 const TRIM_HEAD_SEC = 15;   // brief: drop first 15 s
 const TRIM_TAIL_SEC = 15;   // brief: drop last 15 s
 const XFADE_SEC = 6;        // tail→head crossfade window for the loop
-const AMBIENT_GAIN = 0.10;  // master cap. MP3 is mastered louder than the
-                            // procedural drone (which sat at 0.011); this
-                            // brings the felt level into the same "barely
-                            // there" range.
+// v0.10.2: pulled from 0.10 → 0.04 per user feedback ("чуть тише").
+// The MP3 is normalised pretty hot at the source; 0.04 puts it firmly in
+// "you only notice when it stops" territory next to nav tones at ~0.05.
+const AMBIENT_GAIN = 0.04;
 
 let loopBuffer: AudioBuffer | null = null;
 let loopBufferPromise: Promise<AudioBuffer> | null = null;

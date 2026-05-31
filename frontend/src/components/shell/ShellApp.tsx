@@ -33,8 +33,7 @@ import {
   subscribeSoundPack,
 } from "../../sound";
 import { GameDrawer } from "../GameDrawer";
-import { BackupsPage } from "../../pages/BackupsPage";
-import { Modal } from "../Modal";
+import { ShellBackupsView } from "./ShellBackupsView";
 import { CornerIcons, CORNER_ICON_ORDER } from "./CornerIcons";
 import { GameCarousel } from "./GameCarousel";
 import { HeroPanel } from "./HeroPanel";
@@ -208,16 +207,9 @@ export function ShellApp({
   useControllerButton((btn) => {
     if (pickerOpen || audioOpen || btOpen || updateModalOpen) return;
     if (overlayBlocks) {
-      // Most overlays handle their own B inside their components
-      // (PowerMenu / DevicesMenu / GameDrawer / ShellSettingsPage / the
-      // ShellUpdateModal). But the Backups overlay is a vanilla <Modal>
-      // — Modal only listens for Esc on the keyboard, not the
-      // controller. So we wire B here for that one case. v0.10.0 ship
-      // had no way out of Backups with a controller, this fixes it.
-      if (overlay === "backups" && (btn === "b" || btn === "back")) {
-        playBack();
-        setOverlay("none");
-      }
+      // Every overlay handles its own B inside its component:
+      // PowerMenu / DevicesMenu / GameDrawer / ShellSettingsPage /
+      // ShellBackupsView / ShellUpdateModal. Leave them alone.
       return;
     }
     if (btn === "a") {
@@ -430,16 +422,12 @@ export function ShellApp({
           onChanged={refresh}
         />
       )}
-      <Modal
-        open={overlay === "backups"}
-        title="Бэкапы"
-        size="6xl"
-        onClose={() => { playBack(); setOverlay("none"); }}
-      >
-        <div className="max-h-[75vh] overflow-y-auto">
-          <BackupsPage games={games} />
-        </div>
-      </Modal>
+      {overlay === "backups" && (
+        <ShellBackupsView
+          games={games}
+          onClose={() => { playBack(); setOverlay("none"); }}
+        />
+      )}
 
       {pickPrep && (
         <MonitorPicker

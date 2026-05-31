@@ -58,6 +58,17 @@ export function ShellSettingsPage({
       .filter((el) => el.offsetParent !== null);
   }, []);
 
+  // Clear the marker from anywhere it may still live, then set it on the
+  // new target. WebView2 won't fire :focus-visible on programmatic
+  // .focus(), so this attribute is what the universal CSS rule keys off
+  // (see style.css → *[data-gs-focused]).
+  function setGamepadFocus(target: HTMLElement) {
+    document.querySelectorAll<HTMLElement>('[data-gs-focused="true"]')
+      .forEach((el) => el.removeAttribute("data-gs-focused"));
+    target.setAttribute("data-gs-focused", "true");
+    target.focus();
+  }
+
   const moveFocus = useCallback((delta: number) => {
     const els = collect();
     if (!els.length) return;
@@ -66,7 +77,7 @@ export function ShellSettingsPage({
     const next = Math.max(0, Math.min(els.length - 1, (i < 0 ? 0 : i) + delta));
     if (next === i) return;
     const target = els[next];
-    target.focus();
+    setGamepadFocus(target);
     target.scrollIntoView({ block: "nearest", behavior: "smooth" });
     playMove();
   }, [collect]);
@@ -75,7 +86,7 @@ export function ShellSettingsPage({
   useEffect(() => {
     const t = setTimeout(() => {
       const els = collect();
-      els[0]?.focus({ preventScroll: true });
+      if (els[0]) setGamepadFocus(els[0]);
     }, 50);
     return () => clearTimeout(t);
   }, [collect]);

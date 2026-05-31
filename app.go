@@ -626,9 +626,43 @@ func cleanupOldExe() {
 	}
 }
 
-// RestartApp re-launches the process with the same arguments and exits the
-// current one. Used after Apply() to switch into the freshly written exe.
+// RestartApp re-launches the process. Used after Apply() to switch into
+// the freshly written exe.
+//
+// Two paths — picked by whether we're running under the watchdog:
+//
+//   1. Normal desktop mode: spawn a detached cmd /c that waits ~2 s for
+//      our SingleInstanceLock mutex to release, then `start ""` the new
+//      binary. We then os.Exit(0). This is the v0.8.3 dance.
+//
+//   2. Shell mode (GS_SHELL_MODE=1): we're a child of
+//      gamesaver-watchdog.exe, which already knows how to re-spawn us
+//      from target.txt. The watchdog's superviseLoop treats exit-code 0
+//      as "user wants out → launch Explorer", and any non-zero as
+//      "crashed → restart". So all we need to do is os.Exit with a
+//      sentinel non-zero code (42 = "restart requested") and the
+//      watchdog will re-run the now-updated GameSaver.exe automatically
+//      — no detached cmd, no race with Explorer.
+//
+//      Incident: in v0.10.1 the shell-mode update flow used the same
+//      detached-cmd path as desktop mode, so the user got dumped to
+//      Explorer after every update — the watchdog saw exit 0 and
+//      launched Explorer as designed, just before the relaunched
+//      GameSaver could come up.
 func (a *App) RestartApp() error {
+	if os.Getenv("GS_SHELL_MODE") == "1" {
+		// Under the watchdog → just exit with the restart sentinel.
+		// minio/selfupdate has already swapped the on-disk binary at the
+		// path the watchdog's target.txt points to, so the next supervised
+		// run uses the new image.
+		slog.Info("RestartApp: exiting with restart sentinel for watchdog")
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			os.Exit(42)
+		}()
+		return nil
+	}
+
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -641,10 +675,9 @@ func (a *App) RestartApp() error {
 
 	// We must NOT launch the new instance while we're still alive: the Wails
 	// SingleInstanceLock mutex is still held by us, so the new process would
-	// see "another instance running", hand off, and exit immediately — the
-	// app would never come back after an update. So we hand the relaunch to a
-	// detached cmd that waits ~2 s (for us to fully exit and release the
-	// mutex) and only then starts the new binary.
+	// see "another instance running", hand off, and exit immediately. So we
+	// hand the relaunch to a detached cmd that waits ~2 s (for us to fully
+	// exit and release the mutex) and only then starts the new binary.
 	//
 	// `ping -n 3 127.0.0.1` is the headless-safe delay (`timeout` errors with
 	// no console under CREATE_NO_WINDOW).
