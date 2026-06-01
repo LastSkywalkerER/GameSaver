@@ -38,6 +38,13 @@ export function ShellSettingsPage({
   onOpenBluetoothPicker: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // The element our gamepad cursor is on right now. We can't rely on
+  // document.activeElement for this — in WebView2 a programmatic
+  // .focus() on a <button> sometimes leaves activeElement pointing at
+  // <body>, so when the user presses A the click target is wrong.
+  // Tracking the ref directly is unambiguous.
+  const focusedRef = useRef<HTMLElement | null>(null);
+
   // Recollect focusables lazily — DOM shape inside SettingsPage rarely
   // changes after the first render, but new sections appear when async
   // GetConfig / GetSunshineStatus resolve. We snapshot on every focus
@@ -59,20 +66,27 @@ export function ShellSettingsPage({
   }, []);
 
   // Clear the marker from anywhere it may still live, then set it on the
-  // new target. WebView2 won't fire :focus-visible on programmatic
-  // .focus(), so this attribute is what the universal CSS rule keys off
-  // (see style.css → *[data-gs-focused]).
+  // new target AND record it in our ref. WebView2 won't fire
+  // :focus-visible on programmatic .focus() (style.css keys the ring
+  // off data-gs-focused for the visual), and it ALSO sometimes leaves
+  // document.activeElement pointing at <body> instead of the focused
+  // element (which is why a separate ref tracks the cursor for the
+  // A-button click handler).
   function setGamepadFocus(target: HTMLElement) {
     document.querySelectorAll<HTMLElement>('[data-gs-focused="true"]')
       .forEach((el) => el.removeAttribute("data-gs-focused"));
     target.setAttribute("data-gs-focused", "true");
     target.focus();
+    focusedRef.current = target;
   }
 
   const moveFocus = useCallback((delta: number) => {
     const els = collect();
     if (!els.length) return;
-    const cur = document.activeElement as HTMLElement | null;
+    // Prefer our own ref over document.activeElement for the same
+    // reason it matters in the A-click path — activeElement lies in
+    // WebView2 after programmatic .focus().
+    const cur = focusedRef.current ?? (document.activeElement as HTMLElement | null);
     const i = cur ? els.indexOf(cur) : -1;
     const next = Math.max(0, Math.min(els.length - 1, (i < 0 ? 0 : i) + delta));
     if (next === i) return;
@@ -110,13 +124,19 @@ export function ShellSettingsPage({
   });
   useControllerButton((btn) => {
     if (btn === "a") {
-      const el = document.activeElement as HTMLElement | null;
+      const el = focusedRef.current;
       if (!el) return;
-      // For inputs (text / number) A should NOT click — there's nothing
-      // to click; the browser already lets the user edit. The visible
-      // effect would be a no-op. For everything else .click() is the
-      // right activation primitive (buttons, labels of toggles, links).
-      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") return;
+      const tag = el.tagName;
+      if (tag === "TEXTAREA" || tag === "SELECT") return;
+      // For text/number inputs A is meaningless (nothing to click) but
+      // for CHECKBOX / RADIO inputs A SHOULD toggle them — calling
+      // .click() on a checkbox flips its checked state, which is
+      // exactly what the user wants on the gs-check / gs-radio
+      // controls in Settings.
+      if (tag === "INPUT") {
+        const t = (el as HTMLInputElement).type;
+        if (t !== "checkbox" && t !== "radio") return;
+      }
       playSelect();
       el.click();
     } else if (btn === "b" || btn === "back" || btn === "y") {
@@ -127,11 +147,24 @@ export function ShellSettingsPage({
     }
   });
 
-  // Esc closes the page (keyboard parity with B). Don't hijack typing
-  // when the focused element is an editable input.
+  // Esc closes the page. Enter mirrors A so a keyboard-only user can
+  // also activate the focused control even when the browser hasn't
+  // moved real focus there (WebView2 quirk — see setGamepadFocus).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); playBack(); onClose(); }
+      else if (e.key === "Enter") {
+        const el = focusedRef.current; if (!el) return;
+        const tag = el.tagName;
+        if (tag === "TEXTAREA" || tag === "SELECT") return;
+        if (tag === "INPUT") {
+          const t = (el as HTMLInputElement).type;
+          if (t !== "checkbox" && t !== "radio") return;
+        }
+        e.preventDefault();
+        playSelect();
+        el.click();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

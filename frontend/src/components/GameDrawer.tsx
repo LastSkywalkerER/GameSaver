@@ -63,20 +63,27 @@ export function GameDrawer({
       .filter((el) => el.offsetParent !== null);
   }, []);
 
-  // WebView2 won't paint :focus-visible on programmatic .focus(), so
-  // we mark the active element with data-gs-focused="true" — see
+  // Track the gamepad cursor ourselves: WebView2 sometimes leaves
+  // document.activeElement at <body> right after a programmatic
+  // .focus() call, so we can't trust it for the A-click handler. Same
+  // pattern as ShellSettingsPage.
+  const focusedRef = useRef<HTMLElement | null>(null);
+
+  // WebView2 also won't paint :focus-visible on programmatic .focus(),
+  // so we mark the active element with data-gs-focused="true" — see
   // style.css for the matching CSS rule.
   function setGamepadFocus(target: HTMLElement) {
     document.querySelectorAll<HTMLElement>('[data-gs-focused="true"]')
       .forEach((el) => el.removeAttribute("data-gs-focused"));
     target.setAttribute("data-gs-focused", "true");
     target.focus();
+    focusedRef.current = target;
   }
 
   function moveDrawerFocus(delta: number) {
     const els = collectFocusables();
     if (!els.length) return;
-    const cur = document.activeElement as HTMLElement | null;
+    const cur = focusedRef.current ?? (document.activeElement as HTMLElement | null);
     const i = cur ? els.indexOf(cur) : -1;
     const next = Math.max(0, Math.min(els.length - 1, (i < 0 ? 0 : i) + delta));
     if (next === i) return;
@@ -101,12 +108,14 @@ export function GameDrawer({
   useControllerButton((btn) => {
     if (showPicker || showDeepScan) return;
     if (btn === "a") {
-      const el = document.activeElement as HTMLElement | null;
+      const el = focusedRef.current;
       if (!el) return;
-      // Inputs/selects edit themselves — A clicking on a number input
-      // would do nothing. Skip those; everything else (buttons etc.)
-      // gets clicked.
-      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") return;
+      const tag = el.tagName;
+      if (tag === "TEXTAREA" || tag === "SELECT") return;
+      if (tag === "INPUT") {
+        const t = (el as HTMLInputElement).type;
+        if (t !== "checkbox" && t !== "radio") return;
+      }
       playSelect();
       el.click();
     } else if (btn === "b" || btn === "back") {
@@ -258,8 +267,9 @@ export function GameDrawer({
         // / AppData) — without it the whole drawer scrolls sideways when
         // a path overflows, which read as the horizontal scrollbar in
         // the v0.9.x screenshots. Vertical scroll is the only intended
-        // axis here.
-        className="card relative h-full w-full max-w-3xl overflow-y-auto overflow-x-hidden rounded-none border-l border-border"
+        // axis here. v0.10.3: bumped to 4xl (was 3xl) so the chips + the
+        // action buttons fit alongside a clipped path on one line.
+        className="card relative h-full w-full max-w-4xl overflow-y-auto overflow-x-hidden rounded-none border-l border-border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative h-56 overflow-hidden">
@@ -318,7 +328,7 @@ export function GameDrawer({
                 return (
                   <div key={inst.id} className="card flex items-center justify-between gap-3 px-3 py-2">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
                         <SourceBadge source={inst.source} />
                         {dirSize > 0 ? (
                           <span
@@ -333,8 +343,13 @@ export function GameDrawer({
                           <span className="chip text-muted" title="Размер ещё не подсчитан — фоновый walker в работе">…</span>
                         )}
                       </div>
-                      <div className="mt-1 truncate text-sm text-gray-200" title={inst.rootPath}>{inst.rootPath}</div>
-                      <div className="truncate text-xs text-muted" title={inst.exePath}>{inst.exePath}</div>
+                      {/* Paths can be ridiculously long
+                          (C:\SteamLibrary\steamapps\common\<game>\Binaries\Win64\…-Shipping.exe).
+                          truncate-start keeps the meaningful tail visible
+                          and eats the head with "…" so wide rows can't
+                          push the action buttons off the right edge. */}
+                      <div className="mt-1 truncate-start text-sm text-gray-200" title={inst.rootPath}>{inst.rootPath}</div>
+                      <div className="truncate-start text-xs text-muted" title={inst.exePath}>{inst.exePath}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button className="btn" onClick={() => api.ShowItemInFolder(inst.rootPath).catch((e) => api.Toast("error", "Открыть папку: " + String(e)))}>📁</button>
@@ -362,12 +377,12 @@ export function GameDrawer({
                 <div key={loc.id} className="card px-3 py-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="chip">{loc.kind}</span>
                         {loc.sourceHint && <span className="chip">{loc.sourceHint}</span>}
                         {loc.isJunction && <span className="chip">junction</span>}
                       </div>
-                      <div className="mt-1 truncate text-sm text-gray-200" title={loc.path}>{loc.path}</div>
+                      <div className="mt-1 truncate-start text-sm text-gray-200" title={loc.path}>{loc.path}</div>
                       <div className="mt-0.5 text-xs text-muted">
                         {loc.fileCount} files · {formatBytes(loc.sizeBytes)} · {formatDate(loc.mtime)}
                       </div>
@@ -475,7 +490,7 @@ export function GameDrawer({
                       <span>· {formatBytes(sn.compressedBytes)} / {formatBytes(sn.totalBytes)}</span>
                       <span>· {sn.fileCount} f</span>
                     </div>
-                    <div className="mt-0.5 truncate text-xs text-muted" title={sn.archivePath}>{sn.archivePath}</div>
+                    <div className="mt-0.5 truncate-start text-xs text-muted" title={sn.archivePath}>{sn.archivePath}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button className="btn" onClick={() => api.ShowItemInFolder(sn.archivePath).catch((e) => api.Toast("error", "Открыть папку: " + String(e)))}>📁</button>

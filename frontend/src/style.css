@@ -106,6 +106,26 @@
   }
 }
 
+/* Truncate from the START of a string instead of the end — i.e. keep the
+   tail visible, cut off the head with an ellipsis.
+   Used for file paths in GameDrawer / Backups view, where the meaningful
+   part is always the last segment (game folder + filename) and the long
+   "C:\Program Files (x86)\SteamLibrary\steamapps\common\..." prefix can
+   safely fall off the left edge.
+   The direction:rtl trick reverses the truncation axis without flipping
+   the rendered glyphs (for ASCII text — Cyrillic mixed-direction text
+   would need bidi-unicode markers, but file paths are ASCII). Note we
+   also set unicode-bidi: plaintext so any non-ASCII content keeps its
+   natural direction. */
+.truncate-start {
+  direction: rtl;
+  unicode-bidi: plaintext;
+  text-align: left;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* Themed checkbox + radio — the native browser controls are gray
    half-rendered boxes that don't match the rest of the app. We zero out
    the chrome with appearance:none and draw a small custom indicator.
