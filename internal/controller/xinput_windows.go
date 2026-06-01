@@ -18,10 +18,68 @@ import (
 	"unsafe"
 )
 
-var (
-	xinput       = syscall.NewLazyDLL("xinput1_4.dll")
-	procGetState = xinput.NewProc("XInputGetState")
-)
+// We probe multiple XInput DLL versions and pick the first one that
+// successfully returns state for *any* slot. v0.10.4: this exists
+// because the Moonlight virtual gamepad (and some other ViGEm-style
+// virtual controllers) doesn't always show up via xinput1_4 — only
+// after Steam Input "wakes" the slot. The older 1_3 / 9_1_0 DLLs are
+// shims over the same underlying driver but some virtual-pad drivers
+// only respond to one of them.
+//
+// xinput1_3.dll also exports XInputGetStateEx at ordinal 100 — same
+// XINPUT_STATE struct but the Buttons word also includes the Guide
+// button (mask 0x0400). That's not exported by name on any version.
+// We prefer Ex when available because some virtual pads have been
+// reported to respond to it but not to the plain XInputGetState.
+
+type xinputBackend struct {
+	dll  *syscall.LazyDLL
+	proc *syscall.LazyProc
+	name string // for logging / debugging
+}
+
+var xinputBackends []xinputBackend
+
+func init() {
+	// Order matters: try ordinal-100 GetStateEx first (Guide button +
+	// catches some virtual pads), then 1_4's named GetState (canonical),
+	// then 1_3 / 9_1_0 fallbacks.
+	xi13 := syscall.NewLazyDLL("xinput1_3.dll")
+	if proc := xi13.NewProc("#100"); proc.Find() == nil {
+		xinputBackends = append(xinputBackends, xinputBackend{xi13, proc, "1_3:#100(Ex)"})
+	}
+	xi14 := syscall.NewLazyDLL("xinput1_4.dll")
+	if proc := xi14.NewProc("XInputGetState"); proc.Find() == nil {
+		xinputBackends = append(xinputBackends, xinputBackend{xi14, proc, "1_4:GetState"})
+	}
+	if proc := xi13.NewProc("XInputGetState"); proc.Find() == nil {
+		xinputBackends = append(xinputBackends, xinputBackend{xi13, proc, "1_3:GetState"})
+	}
+	xi910 := syscall.NewLazyDLL("xinput9_1_0.dll")
+	if proc := xi910.NewProc("XInputGetState"); proc.Find() == nil {
+		xinputBackends = append(xinputBackends, xinputBackend{xi910, proc, "9_1_0:GetState"})
+	}
+}
+
+// procGetState retained as a thin compatibility marker so the
+// `Find()` check on Run() startup keeps working — it just looks for
+// the first available backend.
+type procWrapper struct{}
+
+func (procWrapper) Find() error {
+	if len(xinputBackends) == 0 {
+		return errAllXInputMissing
+	}
+	return nil
+}
+
+var errAllXInputMissing = &xinputErr{"no XInput DLL available (1_4 / 1_3 / 9_1_0 all missing)"}
+
+type xinputErr struct{ msg string }
+
+func (e *xinputErr) Error() string { return e.msg }
+
+var procGetState = procWrapper{}
 
 // XINPUT_GAMEPAD — see https://learn.microsoft.com/windows/win32/api/xinput/ns-xinput-xinput_gamepad
 type gamepad struct {
@@ -118,7 +176,7 @@ func (s *Service) Run(ctx context.Context) {
 		slog.Info("xinput not available, controller support disabled", "err", err)
 		return
 	}
-	slog.Info("xinput poller started")
+	slog.Info("xinput poller started", "backends", len(xinputBackends))
 
 	const (
 		tick          = 20 * time.Millisecond // 50 Hz
@@ -127,28 +185,35 @@ func (s *Service) Run(ctx context.Context) {
 		repeatPeriod  = 120 * time.Millisecond
 	)
 
-	// pollAny returns the first XInput slot that comes back with
-	// ERROR_SUCCESS, sticking with that slot until it disconnects. Trying
-	// every poll across 0–3 means a controller plugged in mid-session is
-	// picked up without restart, regardless of which slot Windows hands it.
+	// pollAny returns the first (backend, slot) pair that comes back
+	// with ERROR_SUCCESS. We try every registered backend (1_4 / 1_3 /
+	// 9_1_0, with ordinal-100 GetStateEx first) across all four user
+	// slots. Sticky on the (backend, slot) pair until it disconnects so
+	// two-controller flutter doesn't bounce focus, and so a virtual pad
+	// that only responds to one backend stays attached even if a real
+	// XInput pad is also plugged in.
 	activeSlot := uint32(0xFFFF) // sentinel: none yet
+	activeBackend := -1
 	pollAny := func(out *state) (uint32, bool) {
-		// Prefer the slot we were already using to avoid a connect/disconnect
-		// flutter if two controllers are plugged in.
-		if activeSlot != 0xFFFF {
-			r, _, _ := procGetState.Call(uintptr(activeSlot), uintptr(unsafe.Pointer(out)))
+		// Stick with our current (backend, slot) when possible.
+		if activeSlot != 0xFFFF && activeBackend >= 0 && activeBackend < len(xinputBackends) {
+			be := xinputBackends[activeBackend]
+			r, _, _ := be.proc.Call(uintptr(activeSlot), uintptr(unsafe.Pointer(out)))
 			if r == errSuccess {
 				return activeSlot, true
 			}
 		}
-		for i := uint32(0); i < 4; i++ {
-			if i == activeSlot {
-				continue
-			}
-			r, _, _ := procGetState.Call(uintptr(i), uintptr(unsafe.Pointer(out)))
-			if r == errSuccess {
-				slog.Info("controller detected", "slot", i)
-				return i, true
+		for bi, be := range xinputBackends {
+			for i := uint32(0); i < 4; i++ {
+				if bi == activeBackend && i == activeSlot {
+					continue
+				}
+				r, _, _ := be.proc.Call(uintptr(i), uintptr(unsafe.Pointer(out)))
+				if r == errSuccess {
+					slog.Info("controller detected", "slot", i, "backend", be.name)
+					activeBackend = bi
+					return i, true
+				}
 			}
 		}
 		return 0xFFFF, false
@@ -189,6 +254,7 @@ func (s *Service) Run(ctx context.Context) {
 				if connected {
 					s.connected.Store(false)
 					activeSlot = 0xFFFF
+					activeBackend = -1
 					s.emit("controller:state", map[string]any{"connected": false})
 				}
 				continue

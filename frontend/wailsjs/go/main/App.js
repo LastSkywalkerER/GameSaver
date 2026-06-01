@@ -90,6 +90,10 @@ export function GetSunshineStatus() {
   return window['go']['main']['App']['GetSunshineStatus']();
 }
 
+export function GetVolume() {
+  return window['go']['main']['App']['GetVolume']();
+}
+
 export function HideGame(arg1, arg2) {
   return window['go']['main']['App']['HideGame'](arg1, arg2);
 }
@@ -242,6 +246,10 @@ export function SetTheme(arg1) {
   return window['go']['main']['App']['SetTheme'](arg1);
 }
 
+export function SetVolumeMute(arg1) {
+  return window['go']['main']['App']['SetVolumeMute'](arg1);
+}
+
 export function SetWatcherDebounceMinutes(arg1) {
   return window['go']['main']['App']['SetWatcherDebounceMinutes'](arg1);
 }
@@ -276,6 +284,14 @@ export function SunshineSync() {
 
 export function Toast(arg1, arg2) {
   return window['go']['main']['App']['Toast'](arg1, arg2);
+}
+
+export function VolumeStepDown(arg1) {
+  return window['go']['main']['App']['VolumeStepDown'](arg1);
+}
+
+export function VolumeStepUp(arg1) {
+  return window['go']['main']['App']['VolumeStepUp'](arg1);
 }
 
 export function WatcherToggle(arg1) {

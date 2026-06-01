@@ -18,6 +18,24 @@ export namespace audio {
 	        this.isDefault = source["isDefault"];
 	    }
 	}
+	export class VolumeInfo {
+	    level: number;
+	    muted: boolean;
+	    step: number;
+	    stepCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VolumeInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.level = source["level"];
+	        this.muted = source["muted"];
+	        this.step = source["step"];
+	        this.stepCount = source["stepCount"];
+	    }
+	}
 
 }
 

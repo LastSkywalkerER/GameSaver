@@ -19,7 +19,7 @@ import clsx from "clsx";
 import { useControllerButton, useControllerNav } from "../../controller";
 import { playBack, playMove, playSelect } from "../../sound";
 
-type Kind = "monitor" | "audio" | "bluetooth";
+type Kind = "monitor" | "audio" | "bluetooth" | "volume";
 
 type Action = {
   key: Kind;
@@ -35,11 +35,13 @@ export function DevicesMenu({
   onPickMonitor,
   onPickAudio,
   onPickBluetooth,
+  onPickVolume,
 }: {
   onClose: () => void;
   onPickMonitor: () => void;
   onPickAudio: () => void;
   onPickBluetooth: () => void;
+  onPickVolume: () => void;
 }) {
   const actions: Action[] = [
     {
@@ -49,6 +51,10 @@ export function DevicesMenu({
     {
       key: "audio", icon: "🎧", label: "Аудио",
       desc: "Назначить вывод / ввод по умолчанию. Меняет дефолт Windows для роли Console + Multimedia.",
+    },
+    {
+      key: "volume", icon: "🔊", label: "Громкость",
+      desc: "Системная громкость дефолтного устройства. ← → шаг, LB/RB крупный шаг, A — Mute.",
     },
     {
       key: "bluetooth", icon: "📶", label: "Bluetooth",
@@ -79,6 +85,7 @@ export function DevicesMenu({
     if (a.key === "monitor") onPickMonitor();
     else if (a.key === "audio") onPickAudio();
     else if (a.key === "bluetooth") onPickBluetooth();
+    else if (a.key === "volume") onPickVolume();
   }
 
   useControllerNav((dir) => {
@@ -108,7 +115,7 @@ export function DevicesMenu({
     >
       <h1 className="mb-10 text-3xl font-semibold text-gray-100">Устройства</h1>
       <div
-        className="grid w-full max-w-5xl grid-cols-1 gap-6 sm:grid-cols-3"
+        className="grid w-full max-w-5xl grid-cols-2 gap-6 sm:grid-cols-4"
         onClick={(e) => e.stopPropagation()}
       >
         {actions.map((a, i) => {

@@ -42,6 +42,7 @@ import { ShellSettingsPage } from "./ShellSettingsPage";
 import { MonitorPicker, type PickPrep } from "./MonitorPicker";
 import { AudioPicker } from "./AudioPicker";
 import { BluetoothPicker } from "./BluetoothPicker";
+import { VolumePicker } from "./VolumePicker";
 import { DevicesMenu } from "./DevicesMenu";
 import { PowerMenu } from "./PowerMenu";
 import { ShellUpdateModal } from "./ShellUpdateModal";
@@ -86,6 +87,7 @@ export function ShellApp({
   const [audioOpen, setAudioOpen] = useState(false);
   const audioAutoChainRef = useRef<boolean>(true);
   const [btOpen, setBtOpen] = useState(false);
+  const [volOpen, setVolOpen] = useState(false);
 
   const openPicker = useCallback(async () => {
     try {
@@ -178,14 +180,14 @@ export function ShellApp({
   // While a picker/overlay is up, the carousel must ignore d-pad/A so a
   // left-press in the picker doesn't also shift the cursor behind it.
   const devicesMenuOpen = overlay === "devices";
-  const updateModalOpen = update !== null && update.available && !pickerOpen && !audioOpen && !btOpen;
+  const updateModalOpen = update !== null && update.available && !pickerOpen && !audioOpen && !btOpen && !volOpen;
   const overlayBlocks =
     overlay === "details" ||
     overlay === "backups" ||
     overlay === "settings" ||
     overlay === "power" ||
     overlay === "devices";
-  const inputBlocked = overlayBlocks || pickerOpen || audioOpen || btOpen || updateModalOpen;
+  const inputBlocked = overlayBlocks || pickerOpen || audioOpen || btOpen || volOpen || updateModalOpen;
 
   useControllerNav((dir) => {
     if (inputBlocked) return;
@@ -205,7 +207,7 @@ export function ShellApp({
   });
 
   useControllerButton((btn) => {
-    if (pickerOpen || audioOpen || btOpen || updateModalOpen) return;
+    if (pickerOpen || audioOpen || btOpen || volOpen || updateModalOpen) return;
     if (overlayBlocks) {
       // Every overlay handles its own B inside its component:
       // PowerMenu / DevicesMenu / GameDrawer / ShellSettingsPage /
@@ -245,7 +247,7 @@ export function ShellApp({
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
-      if (pickerOpen || audioOpen || btOpen || updateModalOpen) return;
+      if (pickerOpen || audioOpen || btOpen || volOpen || updateModalOpen) return;
       if (overlayBlocks) {
         if (e.key === "Escape") { e.preventDefault(); playBack(); setOverlay("none"); }
         return;
@@ -466,10 +468,12 @@ export function ShellApp({
           onPickMonitor={() => openPicker()}
           onPickAudio={() => setAudioOpen(true)}
           onPickBluetooth={() => setBtOpen(true)}
+          onPickVolume={() => setVolOpen(true)}
         />
       )}
 
       {btOpen && <BluetoothPicker onDone={() => setBtOpen(false)} />}
+      {volOpen && <VolumePicker onDone={() => setVolOpen(false)} />}
 
       {updateModalOpen && update && (
         <ShellUpdateModal info={update} onDismiss={onDismissUpdate} />

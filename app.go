@@ -1081,6 +1081,20 @@ func (a *App) ListAudioDevices() ([]audio.Device, error) { return audio.List() }
 // roles (matches the Windows Sound dialog's "Set Default" behavior).
 func (a *App) SetDefaultAudioDevice(deviceID string) error { return audio.SetDefault(deviceID) }
 
+// ===== Volume control for the default render endpoint =====
+//
+// Step-based rather than absolute-set: IAudioEndpointVolume's
+// SetMasterVolumeLevelScalar takes a float in XMM1 which Go's
+// syscall.SyscallN can't target. VolumeStepUp/Down take only
+// (this, ctx) and work cleanly. The UI does ±1 step on ←/→ and
+// ±5 steps on LB/RB, with the visual bar reading the step count
+// from GetVolumeStepInfo so it matches the driver's exact %.
+
+func (a *App) GetVolume() (*audio.VolumeInfo, error)  { return audio.GetVolume() }
+func (a *App) VolumeStepUp(n int) error               { return audio.StepUp(n) }
+func (a *App) VolumeStepDown(n int) error             { return audio.StepDown(n) }
+func (a *App) SetVolumeMute(mute bool) error          { return audio.SetMute(mute) }
+
 // OpenWindowsSoundSettings opens the classic Sound control panel
 // (mmsys.cpl, "Playback" tab). We deliberately avoid the modern
 // "ms-settings:sound" URI here — its handler is provided by Explorer,

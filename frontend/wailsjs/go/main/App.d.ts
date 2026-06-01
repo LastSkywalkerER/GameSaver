@@ -57,6 +57,8 @@ export function GetShellModeStatus():Promise<main.ShellModeStatus>;
 
 export function GetSunshineStatus():Promise<sunshine.Status>;
 
+export function GetVolume():Promise<audio.VolumeInfo>;
+
 export function HideGame(arg1:string,arg2:boolean):Promise<void>;
 
 export function IsControllerConnected():Promise<boolean>;
@@ -133,6 +135,8 @@ export function SetSteamGridDBKey(arg1:string):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
 
+export function SetVolumeMute(arg1:boolean):Promise<void>;
+
 export function SetWatcherDebounceMinutes(arg1:number):Promise<void>;
 
 export function ShowItemInFolder(arg1:string):Promise<void>;
@@ -150,5 +154,9 @@ export function SunshineClear():Promise<void>;
 export function SunshineSync():Promise<void>;
 
 export function Toast(arg1:string,arg2:string):Promise<void>;
+
+export function VolumeStepDown(arg1:number):Promise<void>;
+
+export function VolumeStepUp(arg1:number):Promise<void>;
 
 export function WatcherToggle(arg1:boolean):Promise<void>;
