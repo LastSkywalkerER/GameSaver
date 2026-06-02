@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -43,8 +44,22 @@ var (
 
 	// IPolicyConfigClient — the COM class implementing IPolicyConfig*.
 	clsidPolicyConfigClient = windows.GUID{Data1: 0x870AF99C, Data2: 0x171D, Data3: 0x4F9E, Data4: [8]byte{0xAF, 0x0D, 0xE6, 0x3D, 0xF4, 0x0C, 0x2B, 0xC9}}
-	// IPolicyConfigVista — Win7+ variant; on Win10/11 it's still the one to use.
+
+	// Two IPolicyConfig interface IIDs live in the wild — we try them in
+	// order and use whichever the local Windows build exposes:
+	//
+	//   IPolicyConfigVista (Vista layout) — SetDefaultEndpoint at slot 12.
+	//   IPolicyConfig      (Win7+ layout) — adds ResetDeviceFormat at slot
+	//                                       5, sliding SetDefaultEndpoint
+	//                                       to slot 13.
+	//
+	// v0.10.4 used only the Vista IID. CoCreateInstance returned
+	// E_NOINTERFACE (0x80004002) for that one on some Win10/11 builds
+	// (the user-visible "IPolicyConfig: CoCreateInstance hr=0x80004002"
+	// toast in the screenshot). v0.10.5 falls back to the Win7+ variant
+	// + slot 13 when the Vista one is missing.
 	iidIPolicyConfigVista = windows.GUID{Data1: 0x568B9108, Data2: 0x44BF, Data3: 0x40B4, Data4: [8]byte{0x90, 0x06, 0x86, 0xAF, 0xE5, 0xB5, 0xA6, 0x20}}
+	iidIPolicyConfigWin7  = windows.GUID{Data1: 0xF8679F50, Data2: 0x850A, Data3: 0x41CF, Data4: [8]byte{0x9C, 0x72, 0x43, 0x0F, 0x29, 0x02, 0x90, 0xC8}}
 )
 
 // ─── PROPERTYKEY + PROPVARIANT (only VT_LPWSTR — the one we use) ─────────
@@ -110,7 +125,13 @@ const (
 
 	vtPSGetValue = 5
 
-	vtPolicySetDefaultEndpoint = 12
+	// SetDefaultEndpoint slot depends on which IPolicyConfig variant we
+	// got out of CoCreateInstance — 12 for the Vista layout, 13 for the
+	// Win7+ layout (which has ResetDeviceFormat inserted at slot 5).
+	// SetDefault picks the right one at runtime based on which IID
+	// CoCreateInstance accepted.
+	vtPolicySetDefaultEndpointVista = 12
+	vtPolicySetDefaultEndpointWin7  = 13
 )
 
 // ─── Public API ───────────────────────────────────────────────────────────
@@ -181,6 +202,12 @@ func List() ([]Device, error) {
 // SetDefault makes deviceID the default endpoint for BOTH Console and
 // Multimedia roles (what the "Set Default" button in the Windows Sound
 // dialog does). Communications role is left alone unless the caller asks.
+//
+// Two IPolicyConfig IIDs live in the wild — Vista layout
+// (SetDefaultEndpoint at slot 12) and Win7+ layout (slot 13). We try
+// the Vista one first for backwards compat with the long history of
+// audio-switcher tools that pinned to it; if Windows answers
+// E_NOINTERFACE (0x80004002), fall back to the Win7+ IID + slot 13.
 func SetDefault(deviceID string) error {
 	if deviceID == "" {
 		return errors.New("empty device id")
@@ -190,9 +217,9 @@ func SetDefault(deviceID string) error {
 	}
 	defer coUninit()
 
-	policy, err := coCreateInstance(&clsidPolicyConfigClient, &iidIPolicyConfigVista)
+	policy, vtSet, err := acquirePolicyConfig()
 	if err != nil {
-		return fmt.Errorf("IPolicyConfig: %w", err)
+		return err
 	}
 	defer release(policy)
 
@@ -201,12 +228,40 @@ func SetDefault(deviceID string) error {
 		return err
 	}
 	for _, role := range []int{eConsole, eMultimedia} {
-		if hr := callVTable(policy, vtPolicySetDefaultEndpoint,
+		if hr := callVTable(policy, vtSet,
 			uintptr(unsafe.Pointer(idPtr)), uintptr(role)); int32(hr) < 0 {
 			return fmt.Errorf("SetDefaultEndpoint (role %d) hr=0x%x", role, hr)
 		}
 	}
 	return nil
+}
+
+// acquirePolicyConfig returns (interface, SetDefaultEndpoint vtable slot,
+// error). Probes the Vista IID first, then the Win7+ IID; the matching
+// slot rides along so the caller doesn't have to remember which layout
+// it got.
+//
+// On E_NOINTERFACE (0x80004002) we keep going — that's the documented
+// "wrong IID for this version of the COM class" signal. Other HRESULTs
+// (REGDB_E_CLASSNOTREG / E_ACCESSDENIED / etc.) are surfaced as-is
+// from the first call, since they apply to both attempts equally.
+func acquirePolicyConfig() (uintptr, uintptr, error) {
+	const eNoInterface = 0x80004002
+	policy, err := coCreateInstance(&clsidPolicyConfigClient, &iidIPolicyConfigVista)
+	if err == nil {
+		return policy, vtPolicySetDefaultEndpointVista, nil
+	}
+	// "CoCreateInstance hr=0x80004002" → fall through to the Win7+ IID.
+	// We sniff the string because coCreateInstance wraps the hr without
+	// exposing it as a typed code; cheap and unambiguous.
+	if strings.Contains(err.Error(), fmt.Sprintf("hr=0x%x", uint32(eNoInterface))) {
+		policy, err2 := coCreateInstance(&clsidPolicyConfigClient, &iidIPolicyConfigWin7)
+		if err2 == nil {
+			return policy, vtPolicySetDefaultEndpointWin7, nil
+		}
+		return 0, 0, fmt.Errorf("IPolicyConfig: %w (and Win7 fallback: %v)", err, err2)
+	}
+	return 0, 0, fmt.Errorf("IPolicyConfig: %w", err)
 }
 
 // ─── Internals ────────────────────────────────────────────────────────────
