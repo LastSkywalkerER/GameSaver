@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -62,6 +63,13 @@ type App struct {
 	lastUpdate *updater.UpdateInfo
 
 	scanMu sync.Mutex
+
+	// quitRequested distinguishes a deliberate quit (power-menu Exit, tray
+	// Quit, updater restart) from a window-close request (Alt+F4 / WM_CLOSE).
+	// OnBeforeClose consults it: in shell mode a bare close is turned into
+	// "open the power menu" instead of killing the kiosk, but a genuine quit
+	// must still go through. Set by QuitApp before runtime.Quit.
+	quitRequested atomic.Bool
 }
 
 // Context returns the Wails runtime context once Startup has fired.
@@ -784,6 +792,9 @@ func (a *App) QuitApp() {
 	if a.ctx == nil {
 		return
 	}
+	// Mark this as a genuine quit so OnBeforeClose lets the close through
+	// (in shell mode a bare WM_CLOSE is otherwise rerouted to the power menu).
+	a.quitRequested.Store(true)
 	wailsruntime.Quit(a.ctx)
 }
 

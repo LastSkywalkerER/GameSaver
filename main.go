@@ -94,10 +94,23 @@ func main() {
 		// path internally (visible as a 1–2 s freeze in WebView2 before the
 		// hide kicks in). Returning true cancels the actual close.
 		OnBeforeClose: func(ctx context.Context) bool {
-			if shellMode {
-				// No tray to hide to — let Wails close us. Watchdog won't
-				// relaunch because we'll return exit 0.
+			// A deliberate quit (power-menu "Выйти", tray Quit, updater
+			// restart) flips this flag via QuitApp before calling Quit —
+			// let those close cleanly (watchdog then brings Explorer back).
+			if app.quitRequested.Load() {
 				return false
+			}
+			if shellMode {
+				// A bare close request in the kiosk shell is almost always
+				// Alt+F4 (the window is frameless — there's no X button).
+				// Closing here would exit 0 → the watchdog drops the user to
+				// Explorer, which is jarring and easy to hit by accident. So
+				// instead surface the power menu (the same Lock / Sleep /
+				// Reboot / Exit grid as the Start button / ⏻ corner icon) and
+				// CANCEL the close. The only way out stays the deliberate
+				// power-menu Exit.
+				wailsruntime.EventsEmit(ctx, "shell:open-power-menu", nil)
+				return true
 			}
 			wailsruntime.WindowHide(ctx)
 			return true

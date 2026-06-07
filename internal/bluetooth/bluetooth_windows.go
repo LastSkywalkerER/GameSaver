@@ -42,6 +42,10 @@ var (
 	procBluetoothFindNextDevice  = dll.NewProc("BluetoothFindNextDevice")
 	procBluetoothFindDeviceClose = dll.NewProc("BluetoothFindDeviceClose")
 	procBluetoothSetServiceState = dll.NewProc("BluetoothSetServiceState")
+	// Radio enumeration — needed to hand SetServiceState a real radio
+	// handle (NULL is rejected on Win10/11, see setServicesByID).
+	procBluetoothFindFirstRadio = dll.NewProc("BluetoothFindFirstRadio")
+	procBluetoothFindRadioClose = dll.NewProc("BluetoothFindRadioClose")
 )
 
 // ─── Service GUIDs (Bluetooth SIG profile UUIDs) ──────────────────────────
@@ -234,33 +238,46 @@ func setServicesByID(deviceID string, enable bool) error {
 	if enable {
 		flag = btServiceEnable
 	}
+
+	// BluetoothSetServiceState needs a REAL radio handle. Passing NULL
+	// (what we did before) is rejected on Win10/11 with
+	// ERROR_INVALID_PARAMETER (87): every service flip failed, no
+	// connection was ever attempted — and the failure was invisible
+	// because we printed GetLastError instead of the call's return code
+	// (see below), so the user saw "errno 0: operation completed
+	// successfully". Open the first local radio and pass its handle; if
+	// there genuinely is no radio, fall back to NULL rather than refuse.
+	radio, closeRadio := firstRadio()
+	defer closeRadio()
+
 	var firstErr error
 	anyOK := false
 	for i := range audioServiceGUIDs {
 		g := audioServiceGUIDs[i]
-		r, _, callErr := procBluetoothSetServiceState.Call(
-			0, // hRadio = NULL → first available radio
+		// BluetoothSetServiceState reports its result through the DWORD
+		// RETURN VALUE (r), NOT GetLastError. The previous code read the
+		// 3rd Call() return (GetLastError) — which is Errno(0) on the
+		// no-SetLastError path, so a genuine failure formatted as the
+		// nonsensical "errno 0: The operation completed successfully."
+		// The error code is r.
+		r, _, _ := procBluetoothSetServiceState.Call(
+			radio,
 			uintptr(unsafe.Pointer(target)),
 			uintptr(unsafe.Pointer(&g)),
 			flag,
 		)
-		// SetServiceState returns ERROR_SUCCESS (0) on success.
-		if r == 0 {
+		if r == 0 { // ERROR_SUCCESS
 			anyOK = true
 			continue
 		}
-		// ERROR_SERVICE_DOES_NOT_EXIST (1060) and ERROR_NOT_FOUND (1168)
-		// are expected for profiles the device doesn't expose — not real
-		// failures, just "skip this one".
-		if errno, ok := callErr.(syscall.Errno); ok {
-			if errno == 1060 || errno == 1168 {
-				continue
-			}
-			if firstErr == nil {
-				firstErr = fmt.Errorf("SetServiceState %X (errno %d): %w", g.Data1, uint32(errno), callErr)
-			}
-		} else if firstErr == nil {
-			firstErr = fmt.Errorf("SetServiceState %X hr=0x%x", g.Data1, r)
+		// ERROR_SERVICE_DOES_NOT_EXIST (1060) / ERROR_NOT_FOUND (1168):
+		// the device simply doesn't expose this profile — a clean skip,
+		// not a real failure.
+		if r == 1060 || r == 1168 {
+			continue
+		}
+		if firstErr == nil {
+			firstErr = fmt.Errorf("SetServiceState %04X failed (code %d): %v", g.Data1, r, syscall.Errno(r))
 		}
 	}
 	if anyOK {
@@ -312,6 +329,32 @@ func listRaw() ([]btDeviceInfo, error) {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+// firstRadio opens a handle to the first local Bluetooth radio so
+// BluetoothSetServiceState has a non-NULL hRadio to act on. The returned
+// closeFn releases the radio HANDLE (CloseHandle) and the enumeration
+// handle (BluetoothFindRadioClose). On any failure it returns (0, no-op)
+// and the caller falls back to a NULL radio handle (best-effort).
+func firstRadio() (uintptr, func()) {
+	noop := func() {}
+	if err := procBluetoothFindFirstRadio.Find(); err != nil {
+		return 0, noop
+	}
+	var frp btFindRadioParams
+	frp.dwSize = uint32(unsafe.Sizeof(frp))
+	var h uintptr
+	hFind, _, _ := procBluetoothFindFirstRadio.Call(
+		uintptr(unsafe.Pointer(&frp)),
+		uintptr(unsafe.Pointer(&h)),
+	)
+	if hFind == 0 || h == 0 {
+		return 0, noop
+	}
+	return h, func() {
+		procBluetoothFindRadioClose.Call(hFind)
+		windows.CloseHandle(windows.Handle(h))
+	}
+}
 
 func toDevice(info *btDeviceInfo) Device {
 	name := windows.UTF16ToString(info.szName[:])

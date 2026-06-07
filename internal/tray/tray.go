@@ -20,6 +20,7 @@ type AppController interface {
 	OpenBackupFolder() error
 	WatcherToggle(enabled bool) error
 	IsWatcherEnabled() bool
+	QuitApp()
 }
 
 var (
@@ -91,9 +92,10 @@ func onReady() {
 					mPause.Uncheck()
 				}
 			case <-mQuit.ClickedCh:
-				if ctx := ctrl.Context(); ctx != nil {
-					wailsruntime.Quit(ctx)
-				}
+				// Route through QuitApp (not runtime.Quit directly) so the
+				// quitRequested flag is set — otherwise OnBeforeClose would
+				// treat this like a window close and just hide to tray.
+				ctrl.QuitApp()
 				systray.Quit()
 				return
 			}

@@ -317,6 +317,19 @@ export function ShellApp({
     return () => { try { (off as any)?.(); } catch {} };
   }, []);
 
+  // Alt+F4 / window-close in kiosk shell mode is intercepted by Go
+  // (main.go OnBeforeClose) and rerouted here instead of killing the
+  // shell and dropping the user to Explorer. Surface the Power menu —
+  // the same Lock / Sleep / Reboot / Exit grid as Start / the ⏻ corner
+  // icon. Deliberate exit is then Power → "Выйти из shell-режима".
+  useEffect(() => {
+    const off = EventsOn("shell:open-power-menu", () => {
+      playSelect();
+      setOverlay("power");
+    });
+    return () => { try { (off as any)?.(); } catch {} };
+  }, []);
+
   // ── Ambient menu drone — see sound.ts for the lifecycle rationale. ───
   useEffect(() => {
     let stopped = false;

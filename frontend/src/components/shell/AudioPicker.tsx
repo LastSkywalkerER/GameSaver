@@ -70,20 +70,39 @@ export function AudioPicker({ onDone }: { onDone: () => void }) {
     setFlow(to);
   }
 
-  async function applyChoice() {
-    if (applying) return;
-    const dev = col[idx];
-    if (!dev) return;
+  // applyDevice switches to a SPECIFIC device. The controller/keyboard
+  // path passes col[idx]; a mouse click passes the clicked row's device
+  // directly. We must NOT read the focused idx in here: a click does
+  // setIdx(i) (async, next render) and then applies immediately, so
+  // reading idx would see the STALE pre-selected default (idx is seeded
+  // to the current default in the effect above) — which is .isDefault, so
+  // we'd just playBack()+onDone() and close WITHOUT switching. That was the
+  // bug. Same stale-closure class as PowerMenu v0.7.7 (see frontend-ui.md).
+  async function applyDevice(dev: AudioDevice | undefined) {
+    if (applying || !dev) return;
     if (dev.isDefault) { playBack(); onDone(); return; }
     playSelect();
     setApplying(true);
     try {
       await (api as any).SetDefaultAudioDevice(dev.id);
-      api.Toast("success", `${flow === "render" ? "Вывод" : "Ввод"}: ${dev.name}`);
+      api.Toast("success", `${dev.dataFlow === "render" ? "Вывод" : "Ввод"}: ${dev.name}`);
       await refresh();
     } catch (e) {
       api.Toast("error", "Сменить устройство: " + String(e));
     } finally { setApplying(false); }
+  }
+  // Controller/keyboard: act on the focused row in the active column.
+  function applyChoice() { void applyDevice(col[idx]); }
+  // Mouse: resolve the clicked device from its OWN column list (not the
+  // focused idx), move the cursor/column there for visual feedback, then
+  // switch to it. This is what makes clicking any row — including one in
+  // the currently-inactive column — actually switch to that device.
+  function pickFromColumn(d: AudioDevice) {
+    setFlow(d.dataFlow);
+    const list = devices.filter((x) => x.dataFlow === d.dataFlow);
+    const i = list.findIndex((x) => x.id === d.id);
+    if (i >= 0) setIdx(i);
+    void applyDevice(d);
   }
 
   useControllerNav((dir) => {
@@ -126,7 +145,7 @@ export function AudioPicker({ onDone }: { onDone: () => void }) {
           active={flow === "render"}
           focusIdx={flow === "render" ? idx : -1}
           onPickColumn={() => switchFlow("render")}
-          onPickItem={(i) => { setFlow("render"); setIdx(i); applyChoice(); }}
+          onPickItem={pickFromColumn}
         />
         <Column
           title="🎤 Ввод (input)"
@@ -134,7 +153,7 @@ export function AudioPicker({ onDone }: { onDone: () => void }) {
           active={flow === "capture"}
           focusIdx={flow === "capture" ? idx : -1}
           onPickColumn={() => switchFlow("capture")}
-          onPickItem={(i) => { setFlow("capture"); setIdx(i); applyChoice(); }}
+          onPickItem={pickFromColumn}
         />
       </div>
 
@@ -156,7 +175,7 @@ function Column({
   active: boolean;
   focusIdx: number;
   onPickColumn: () => void;
-  onPickItem: (i: number) => void;
+  onPickItem: (d: AudioDevice) => void;
 }) {
   return (
     <div
@@ -174,7 +193,7 @@ function Column({
           return (
             <button
               key={d.id}
-              onClick={(e) => { e.stopPropagation(); onPickItem(i); }}
+              onClick={(e) => { e.stopPropagation(); onPickItem(d); }}
               className={clsx(
                 "flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition",
                 isFocus
