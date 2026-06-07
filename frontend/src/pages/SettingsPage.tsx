@@ -5,6 +5,7 @@ import { setLanguage, useT } from "../i18n";
 import { TILE_PREF_LABELS, setTilePref, useTilePrefs, type TilePrefs } from "../tilePrefs";
 import { confirmModal } from "../components/Modal";
 import { AudioPicker } from "../components/shell/AudioPicker";
+import { BluetoothPicker } from "../components/shell/BluetoothPicker";
 import {
   isNavSoundEnabled,
   playBack,
@@ -48,6 +49,7 @@ export function SettingsPage({
   const [sunResult, setSunResult] = useState<"ok" | "err" | null>(null);
   const sunLogEndRef = useRef<HTMLDivElement | null>(null);
   const [audioOpen, setAudioOpen] = useState(false);
+  const [btOpen, setBtOpen] = useState(false);
   const [soundOn, setSoundOn] = useState<boolean>(() => isNavSoundEnabled());
   useEffect(() => subscribeNavSound(setSoundOn), []);
   const tilePrefs = useTilePrefs();
@@ -432,18 +434,17 @@ export function SettingsPage({
           </button>
           <button
             className="btn"
-            disabled={!onOpenBluetoothPicker}
             onClick={() => {
-              if (!onOpenBluetoothPicker) {
-                api.Toast("info", "Bluetooth-пикер доступен в shell-режиме. Пайринг — через Параметры Windows.");
-                return;
-              }
               playSelect();
-              onOpenBluetoothPicker();
+              // Shell settings injects the shell-host picker; normal desktop
+              // mode has no injector, so render our own overlay inline (same
+              // pattern as Audio). The picker is a plain full-screen overlay —
+              // unlike the monitor picker it has no shell-only constraint, so
+              // gating it behind shell mode just made the button dead.
+              if (onOpenBluetoothPicker) onOpenBluetoothPicker();
+              else setBtOpen(true);
             }}
-            title={onOpenBluetoothPicker
-              ? "Список парных BT-устройств. A — connect/disconnect, X — обновить."
-              : "Только в shell-режиме."}
+            title="Список парных BT-устройств. A — connect/disconnect, X — обновить."
           >
             📶 Bluetooth…
           </button>
@@ -574,6 +575,7 @@ export function SettingsPage({
       </section>
 
       {audioOpen && <AudioPicker onDone={() => setAudioOpen(false)} />}
+      {btOpen && <BluetoothPicker onDone={() => setBtOpen(false)} />}
 
       <Modal
         open={sunModal}
