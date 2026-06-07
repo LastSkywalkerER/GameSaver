@@ -30,6 +30,7 @@ React 18 + TypeScript + Vite + Tailwind, bridged to Go by Wails. `frontend/src/`
 ## Stale-closure gotcha (recurring bug)
 
 - A click handler that does `setActive(i)` then calls a `confirm()` which reads `active` from its closure fires the **previously selected** item, not the clicked one. **Pass the index explicitly** (`activate(i)`), and add `onMouseEnter={() => setActive(i)}` so hover tracks the cursor. Incident: PowerMenu (v0.7.7).
+- **Recurred in AudioPicker (v0.10.6).** The click did `setIdx(i)` then `applyChoice()`, which read `col[idx]` from the stale closure. Because `idx` is pre-seeded to the current default (so one A confirms), every click read the **default** device, saw `isDefault`, and just `playBack()+onDone()` — closing the modal without switching. Fixed by passing the device object explicitly (`applyDevice(dev)` / `pickFromColumn`). ⚠️ When a list pre-selects a default, the stale read isn't just "wrong item" — it can be the **no-op** item, so the bug hides as "nothing happened" rather than an obvious misfire. See `decisions/0027`.
 
 ## Persisted UI prefs (localStorage keys)
 

@@ -51,7 +51,13 @@ signed `int`. See `winutil.i32`.
 - Find our own window with `FindWindowW(NULL, "GameSaver")` (the Wails title).
 - `SpanVirtualScreen` uses `GetSystemMetrics(SM_*VIRTUALSCREEN)`; `MoveToRect` snaps back to one monitor. Used by the multi-monitor picker.
 
+## Bluetooth (`internal/bluetooth`)
+
+- 🔴 **`BluetoothSetServiceState` reports its result in its DWORD RETURN VALUE, not `GetLastError`.** Read `r` (the 1st `proc.Call` return) and compare to `ERROR_SUCCESS (0)`. The 3rd `Call` return (GetLastError) is `Errno(0)` ("The operation completed successfully") on this no-SetLastError path. Incident (v0.10.6): we formatted the 3rd return, so every connect failure toasted the nonsensical `errno 0: The operation completed successfully`. Know which convention an API uses before formatting its error.
+- 🔴 **`BluetoothSetServiceState` needs a real radio handle — never `NULL`.** Win10/11 reject `hRadio=NULL` with `ERROR_INVALID_PARAMETER (87)`, so no service flips and no connection is attempted. Get one from `BluetoothFindFirstRadio` (fallback to NULL only if there's genuinely no radio); release the radio `HANDLE` with `CloseHandle` and the find handle with `BluetoothFindRadioClose`. Incident: v0.10.6 BT picker connected nothing.
+- `BLUETOOTH_DEVICE_INFO` is 560 B on x64; `BLUETOOTH_DEVICE_SEARCH_PARAMS` needs the explicit pad before `hRadio` (set every `dwSize`). On a service flip, `ERROR_SERVICE_DOES_NOT_EXIST (1060)` / `ERROR_NOT_FOUND (1168)` = the device doesn't expose that profile → clean skip, not a failure.
+
 ## General
 
-- Always merge stderr / check return codes; many Win32 calls return 0 on failure with `GetLastError` in the third `Call` return.
+- Always merge stderr / check return codes. **Most** Win32 calls return 0 on failure with the real code in `GetLastError` (the third `Call` return) — but **some report the error in the return value itself** (e.g. `BluetoothSetServiceState` returns a Win32 DWORD; its `GetLastError` is meaningless). Check which convention the API uses. See the Bluetooth section.
 - Keep Win32 code in `*_windows.go` files so a non-Windows `go vet`/tooling pass doesn't choke.

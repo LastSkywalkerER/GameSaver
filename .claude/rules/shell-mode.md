@@ -15,7 +15,7 @@ A user in shell mode has no taskbar, no Start menu, no tray. If the app wedges, 
 
 1. **`Ctrl+Alt+Shift+F12`** — watchdog global hotkey: removes the registry value, launches `explorer.exe`, exits.
 2. **`gamesaver-watchdog.exe --disable-shell`** — CLI, runnable from recovery / another machine session.
-3. The in-app **🛑 Exit / power-menu Exit** — `RestoreMonitorConfig` → `DisableShellMode` → `QuitApp`; the watchdog sees a clean exit (code 0), declines to restart, launches Explorer.
+3. The in-app **🛑 Exit / power-menu Exit** — `RestoreMonitorConfig` → `DisableShellMode` → `QuitApp`; the watchdog sees a clean exit (code 0), declines to restart, launches Explorer. (`QuitApp` sets the `quitRequested` flag so `OnBeforeClose` permits the close — since v0.10.6 a bare close otherwise reopens the power menu, see below.)
 
 Any change near shell mode must preserve all three. Test #1 every time.
 
@@ -23,7 +23,7 @@ Any change near shell mode must preserve all three. Test #1 every time.
 
 - **Skip tray init** (no Explorer = no tray host; systray would hang).
 - **Frameless + Fullscreen** window from start.
-- **X button is a real exit** (`OnBeforeClose` returns false), not hide-to-tray.
+- **Alt+F4 / WM_CLOSE opens the power menu — it does NOT exit.** The frameless window has no X button, so a close request is almost always an accidental Alt+F4. `OnBeforeClose` emits `shell:open-power-menu` and returns **true** (cancels the close); `ShellApp` opens the PowerMenu. A *deliberate* quit (power-menu Exit, tray Quit, updater restart) sets `App.quitRequested` (`atomic.Bool`) via `QuitApp()` first, which `OnBeforeClose` checks and lets through. Intercept lives in Go because the OS hands Alt+F4 to the window before the WebView, so a JS keydown can't catch it. Normal (non-shell) mode is unchanged (close → hide-to-tray). Was "X button is a real exit, `OnBeforeClose` returns false" before v0.10.6 — changed because Alt+F4 was an easy way to drop the kiosk to Explorer by accident. See `decisions/0027`.
 
 ## The game-launch cycle (the hard-won part)
 

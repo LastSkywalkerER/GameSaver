@@ -3,7 +3,7 @@
 > **Repo-level file** for `GameSaver` — a native **Windows** desktop app (Wails v2 + Go + React/TS)
 > that scans drives for installed games, matches & versions their save folders, backs them up as
 > ZIPs, and can run as a PlayStation-style **shell replacement** for a console-like experience.
-> Version: v1.0 · Last reviewed: 2026-05-28 · Current release: **v0.7.8**
+> Version: v1.0 · Last reviewed: 2026-06-07 · Current release: **v0.10.6**
 >
 > This file is **navigation and red lines**. Detailed rules — in `.claude/rules/`.
 > Claude workflow — in `.claude/protocol/`. Decisions — in `.claude/decisions/`.
@@ -74,7 +74,8 @@ This file is alive. It grows after incidents and decisions.
 │   ├── 0023-in-app-audio-device-picker.md
 │   ├── 0024-shell-bg-art-video-and-ambient-drone.md
 │   ├── 0025-shell-controller-overhaul-and-settings-page.md
-│   └── 0026-bluetooth-picker-rs-scroll-mp3-ambient.md
+│   ├── 0026-bluetooth-picker-rs-scroll-mp3-ambient.md
+│   └── 0027-shell-picker-fixes-and-altf4-power-menu.md
 │
 ├── chronicles/                        # PROJECT MILESTONES (how we got here)
 │   ├── 2026-05-26-mvp-m0-m11.md
