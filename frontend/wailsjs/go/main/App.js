@@ -154,6 +154,10 @@ export function OpenBackupFolder() {
   return window['go']['main']['App']['OpenBackupFolder']();
 }
 
+export function OpenSysinternalsAutologon() {
+  return window['go']['main']['App']['OpenSysinternalsAutologon']();
+}
+
 export function OpenWindowsBluetoothSettings() {
   return window['go']['main']['App']['OpenWindowsBluetoothSettings']();
 }

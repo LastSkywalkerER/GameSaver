@@ -89,6 +89,8 @@ export function OpenAutoLoginConfigurator():Promise<void>;
 
 export function OpenBackupFolder():Promise<void>;
 
+export function OpenSysinternalsAutologon():Promise<void>;
+
 export function OpenWindowsBluetoothSettings():Promise<void>;
 
 export function OpenWindowsSoundSettings():Promise<void>;

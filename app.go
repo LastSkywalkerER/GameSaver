@@ -1140,15 +1140,23 @@ func (a *App) DisconnectBluetoothDevice(deviceID string) error {
 	return bluetooth.Disconnect(deviceID)
 }
 
-// OpenWindowsBluetoothSettings opens the legacy "Bluetooth & other
-// devices" control panel page. Used as the "I want to PAIR a new
-// device" fallback from inside the BluetoothPicker — pairing is the
-// scope-creep we explicitly left out of the in-app picker.
+// OpenWindowsBluetoothSettings opens the Windows "Add a device" pairing
+// wizard. Used as the "I want to PAIR a new device" action from inside the
+// BluetoothPicker — pairing is the scope-creep we left out of the in-app
+// picker (connect/disconnect of already-paired devices).
 func (a *App) OpenWindowsBluetoothSettings() error {
-	// fsquirt = "Bluetooth File Transfer", which on its own pops the
-	// add-device flow when called with no args. Works without Explorer.
-	if err := exec.Command("fsquirt.exe").Start(); err != nil {
-		// Fallback: control panel "Bluetooth Devices" applet.
+	// DevicePairingWizard.exe is the classic standalone "Add a device" wizard:
+	// it scans for and pairs Bluetooth / wireless devices, and is a plain
+	// Win32 exe in System32 — so it works in shell mode without Explorer or the
+	// immersive Settings app.
+	//
+	// 🔴 NOT fsquirt.exe. v0.10.1 launched fsquirt here believing it was the
+	// add-device flow — fsquirt is the "Bluetooth File Transfer" wizard (send/
+	// receive files), so the "Запарить новое" button dropped the user into a
+	// file-transfer dialog instead of pairing. See decisions/0028 (and the
+	// now-corrected note in 0026).
+	if err := exec.Command("DevicePairingWizard.exe").Start(); err != nil {
+		// Fallback: classic Bluetooth control-panel applet.
 		return exec.Command("control.exe", "bthprops.cpl").Start()
 	}
 	return nil
@@ -1165,4 +1173,19 @@ func (a *App) OpenAutoLoginConfigurator() error {
 		return autologin.OpenNetplwiz()
 	}
 	return autologin.OpenNetplwiz()
+}
+
+// OpenSysinternalsAutologon downloads Microsoft Sysinternals Autologon (on
+// first use, into %LOCALAPPDATA%\GameSaver\bin\) and launches it elevated so
+// the user can configure passwordless logon in the tool's own GUI. This is an
+// alternative to OpenAutoLoginConfigurator (netplwiz) that's more stable across
+// Windows builds. Like netplwiz, WE never see the password — the user types it
+// into Autologon and clicks Enable; it's stored as an encrypted LSA secret.
+// Blocks on the download (~0.5 MB); the GUI then runs detached.
+func (a *App) OpenSysinternalsAutologon() error {
+	ctx := context.Background()
+	if a.ctx != nil {
+		ctx = a.ctx // cancels the download if the app is shutting down
+	}
+	return autologin.OpenAutologon(ctx)
 }

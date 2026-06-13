@@ -3,7 +3,7 @@
 > **Repo-level file** for `GameSaver` — a native **Windows** desktop app (Wails v2 + Go + React/TS)
 > that scans drives for installed games, matches & versions their save folders, backs them up as
 > ZIPs, and can run as a PlayStation-style **shell replacement** for a console-like experience.
-> Version: v1.0 · Last reviewed: 2026-06-07 · Current release: **v0.10.6**
+> Version: v1.0 · Last reviewed: 2026-06-13 · Current release: **v0.10.8**
 >
 > This file is **navigation and red lines**. Detailed rules — in `.claude/rules/`.
 > Claude workflow — in `.claude/protocol/`. Decisions — in `.claude/decisions/`.
@@ -75,7 +75,8 @@ This file is alive. It grows after incidents and decisions.
 │   ├── 0024-shell-bg-art-video-and-ambient-drone.md
 │   ├── 0025-shell-controller-overhaul-and-settings-page.md
 │   ├── 0026-bluetooth-picker-rs-scroll-mp3-ambient.md
-│   └── 0027-shell-picker-fixes-and-altf4-power-menu.md
+│   ├── 0027-shell-picker-fixes-and-altf4-power-menu.md
+│   └── 0028-sysinternals-autologon-and-bt-pairing-wizard.md
 │
 ├── chronicles/                        # PROJECT MILESTONES (how we got here)
 │   ├── 2026-05-26-mvp-m0-m11.md
@@ -143,7 +144,7 @@ This file is alive. It grows after incidents and decisions.
 | `display` | Monitor enumerate/disable-others/restore via `ChangeDisplaySettingsExW`; hot-plug watch. |
 | `winutil` | Span our window across the virtual desktop / snap to a monitor (`SetWindowPos`). |
 | `power` | `LockWorkStation` + `SetSuspendState` (sleep with wake events disabled). |
-| `autologin` | Passwordless Windows logon helper — unhide netplwiz checkbox + launch it (never touches password). |
+| `autologin` | Passwordless Windows logon helpers — unhide netplwiz checkbox + launch it, OR download & launch Sysinternals Autologon (elevated). Never touches the password. See [0018](.claude/decisions/0018-autologin-via-netplwiz.md)/[0028](.claude/decisions/0028-sysinternals-autologon-and-bt-pairing-wizard.md). |
 | `shellmode` | Registry shell registration + on-demand watchdog download (SHA-256 verified). |
 | `sunshine` | Sync the library into Sunshine's `apps.json` (cmd/cover) + clear; elevated write, preserves user entries. See [decision 0021](.claude/decisions/0021-sunshine-apps-json-sync.md). |
 | `tray` | systray (skipped in shell mode). |

@@ -190,7 +190,7 @@ export function BluetoothPicker({ onDone }: { onDone: () => void }) {
             try { await (api as any).OpenWindowsBluetoothSettings(); }
             catch (e) { api.Toast("error", "Не открылось: " + String(e)); }
           }}
-          title="Откроет системную «Параметры → Bluetooth» для добавления новых устройств."
+          title="Откроет системный мастер «Добавить устройство» для пайринга новых наушников."
         >
           ➕ Запарить новое (Windows)
         </button>

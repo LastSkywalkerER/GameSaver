@@ -50,6 +50,8 @@ export function SettingsPage({
   const sunLogEndRef = useRef<HTMLDivElement | null>(null);
   const [audioOpen, setAudioOpen] = useState(false);
   const [btOpen, setBtOpen] = useState(false);
+  // Sysinternals Autologon download can take a second or two on first use.
+  const [autologonBusy, setAutologonBusy] = useState(false);
   const [soundOn, setSoundOn] = useState<boolean>(() => isNavSoundEnabled());
   useEffect(() => subscribeNavSound(setSoundOn), []);
   const tilePrefs = useTilePrefs();
@@ -505,15 +507,26 @@ export function SettingsPage({
         <p className="mt-2 text-xs text-muted">
           Пароль на учётке останется, но Windows перестанет спрашивать его при
           входе. Полезно для shell-режима — система сама загрузится в
-          GameSaver без участия клавиатуры. Жмёшь кнопку → откроется
-          стандартное окно <code className="rounded bg-card px-1">netplwiz</code>{" "}
-          → снимаешь галочку <em>«Users must enter a user name and password…»</em>{" "}
-          → вводишь пароль (Windows сохранит его в зашифрованном LSA, не в
-          реестре).
-          {" "}На Windows 11 22H2+ галочка скрыта по умолчанию — мы её включим
-          через одну UAC-подсказку.
+          GameSaver без участия клавиатуры. Любой способ ниже пароль{" "}
+          <strong>вводишь сам</strong> в окне Windows — мы его не видим и не
+          храним.
         </p>
-        <div className="mt-3">
+        <p className="mt-2 text-xs text-muted">
+          <strong>1) netplwiz</strong> — штатное окно: снимаешь галочку{" "}
+          <em>«Users must enter a user name and password…»</em> → вводишь пароль
+          (Windows сохранит в зашифрованном LSA). На Windows 11 22H2+ галочка
+          скрыта по умолчанию — мы её включим через одну UAC-подсказку.
+        </p>
+        <p className="mt-2 text-xs text-muted">
+          <strong>2) Sysinternals Autologon</strong> — официальная утилита
+          Microsoft, надёжнее работает на свежих сборках Windows. Качаем{" "}
+          <code className="rounded bg-card px-1">AutoLogon.zip</code> с
+          download.sysinternals.com (~0.5 МБ, один раз, в{" "}
+          <code className="rounded bg-card px-1">%LOCALAPPDATA%\GameSaver\bin\</code>)
+          → запускаем с UAC → вводишь пароль и жмёшь <em>Enable</em>. Пароль так
+          же шифруется как LSA-секрет.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-3">
           <button
             className="btn"
             onClick={async () => {
@@ -525,7 +538,25 @@ export function SettingsPage({
               }
             }}
           >
-            🔓 Настроить авто-вход
+            🔓 Настроить через netplwiz
+          </button>
+          <button
+            className="btn"
+            disabled={autologonBusy}
+            onClick={async () => {
+              setAutologonBusy(true);
+              try {
+                await (api as any).OpenSysinternalsAutologon();
+                api.Toast("info", "Открыли Autologon — введи пароль и нажми Enable.");
+              } catch (e) {
+                api.Toast("error", "Не удалось открыть Autologon: " + String(e));
+              } finally {
+                setAutologonBusy(false);
+              }
+            }}
+            title="Скачает (один раз) и откроет Microsoft Sysinternals Autologon с правами администратора."
+          >
+            {autologonBusy ? "↻ Качаю Autologon…" : "🔑 Настроить через Autologon"}
           </button>
         </div>
       </section>

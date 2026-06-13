@@ -108,8 +108,14 @@ A `sync.Mutex` serialises the slow blocking calls — `BluetoothSetServiceState`
 ~30 s while the radio negotiates with the headset; queueing concurrent requests in the radio gives
 chaotic error reporting otherwise.
 
-Pairing is deliberately out of scope. The `OpenWindowsBluetoothSettings` shortcut punts to
-`fsquirt.exe` (the Bluetooth add-device wizard) for "I want to pair a new device".
+Pairing is deliberately out of scope. The `OpenWindowsBluetoothSettings` shortcut punts to the
+system add-device wizard for "I want to pair a new device".
+
+> **Correction (v0.10.8, [decision 0028](0028-sysinternals-autologon-and-bt-pairing-wizard.md)):**
+> this originally launched `fsquirt.exe`, called here "the Bluetooth add-device wizard". That was
+> wrong — `fsquirt.exe` is the **Bluetooth File Transfer** wizard (send/receive files), so the button
+> dropped users into a file-transfer dialog. Fixed to launch `DevicePairingWizard.exe` (the real
+> "Add a device" wizard).
 
 `App.ListBluetoothDevices` / `ConnectBluetoothDevice` / `DisconnectBluetoothDevice` /
 `OpenWindowsBluetoothSettings` exposed via Wails.
