@@ -21,7 +21,8 @@ React 18 + TypeScript + Vite + Tailwind, bridged to Go by Wails. `frontend/src/`
 
 ## Sound (`sound.ts`)
 
-- Procedural Web Audio API tones — **no audio asset files**. Packs: `psstyle` (default), `subtle`, `retro`, `off`. Persisted in localStorage. `playMove/playSelect/playBack`.
+- Procedural Web Audio API nav tones (`playMove/playSelect/playBack`) + a looped MP3 ambient pad (`startAmbient/stopAmbient`). Since v0.10.1 the sound-pack picker is gone — one knob, `gs:soundOn` (boolean), pinned to the "subtle" voice (legacy `gs:soundPack` migrated on read). See `decisions/0026`.
+- **All output routes through one master `GainNode`.** `setMuted(true/false)` ducks/raises it to silence the *whole* launcher at once. 🔴 This is how audio is killed while the shell is minimized behind a running game — driven explicitly from `doLaunch`/`playtime:changed`, **not** from `visibilitychange` (WebView2 doesn't fire it on OS-minimize, so the old `onVis → stopAmbient` was dead for that case). See `decisions/0029`. Don't route new sounds straight to `ctx.destination` — go through `master(a)` so mute covers them.
 
 ## Modals
 

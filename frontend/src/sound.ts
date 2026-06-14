@@ -40,6 +40,54 @@ function audio(): AudioContext | null {
   } catch { return null; }
 }
 
+// ── Master gain + global mute ──────────────────────────────────────────
+//
+// Every launcher sound (nav tones AND the ambient pad) routes through one
+// master GainNode so we can silence the WHOLE launcher in a single move.
+// This is what mutes audio while a game is running and the shell is
+// minimized behind it. We can't drive that off the page's visibilitychange
+// — WebView2 does NOT fire it on an OS-level minimize (that's exactly why
+// the ambient kept playing after a game launched) — so muting is triggered
+// explicitly from the minimize/restore cycle. See setMuted(), called from
+// ShellApp's launch and playtime-ended handlers.
+let masterGain: GainNode | null = null;
+let muted = false;
+const MUTE_RAMP_SEC = 0.2;    // quick duck when a game takes the screen
+const UNMUTE_RAMP_SEC = 0.35; // gentler fade back when the shell returns
+
+function master(a: AudioContext): GainNode {
+  if (masterGain) return masterGain;
+  const g = a.createGain();
+  g.gain.value = muted ? 0 : 1;
+  g.connect(a.destination);
+  masterGain = g;
+  return g;
+}
+
+export function isMuted(): boolean { return muted; }
+
+// setMuted ducks (m=true) or raises (m=false) the master gain over every
+// launcher sound, and gates new nav tones. The ambient source keeps running
+// while muted, so it resumes seamlessly on unmute. Exponential ramps keep
+// the transition click-free. Safe to call before any sound has played — the
+// flag is honoured when the context / master gain are first created.
+export function setMuted(m: boolean) {
+  if (muted === m) return;
+  muted = m;
+  const a = audio(); if (!a) return;
+  if (!m && a.state === "suspended") a.resume().catch(() => {});
+  const g = master(a);
+  const now = a.currentTime;
+  const ramp = m ? MUTE_RAMP_SEC : UNMUTE_RAMP_SEC;
+  const cur = Math.max(0.0001, g.gain.value);
+  g.gain.cancelScheduledValues(now);
+  g.gain.setValueAtTime(cur, now);
+  // exponentialRampToValueAtTime can't reach 0 — approach a tiny floor,
+  // then pin the exact end value so it doesn't drift.
+  g.gain.exponentialRampToValueAtTime(m ? 0.0001 : 1, now + ramp);
+  g.gain.setValueAtTime(m ? 0 : 1, now + ramp + 0.02);
+}
+
 let enabled: boolean = (() => {
   try {
     // Honour the new key first.
@@ -83,7 +131,7 @@ const TONE_SELECT: Tone[] = [{ type: "sine", from: 440, to: 660, gain: 0.07, ms:
 const TONE_BACK:   Tone[] = [{ type: "sine", from: 300, to: 200, gain: 0.05, ms: 90 }];
 
 function play(tones: Tone[]) {
-  if (!enabled) return;
+  if (!enabled || muted) return;
   const a = audio(); if (!a) return;
   const t0 = a.currentTime;
   for (const tn of tones) {
@@ -99,7 +147,7 @@ function play(tones: Tone[]) {
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(tn.gain, start + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-    osc.connect(gain).connect(a.destination);
+    osc.connect(gain).connect(master(a));
     osc.start(start);
     osc.stop(start + dur + 0.02);
   }
@@ -212,7 +260,7 @@ export function startAmbient() {
     // 4 s fade-in matches the procedural drone's old envelope so the
     // pad doesn't pop on cold-start.
     g.gain.exponentialRampToValueAtTime(AMBIENT_GAIN, now + 4);
-    src.connect(g).connect(a.destination);
+    src.connect(g).connect(master(a));
     src.start();
     curSource = src;
     curGain = g;

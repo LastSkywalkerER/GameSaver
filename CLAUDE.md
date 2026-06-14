@@ -76,7 +76,8 @@ This file is alive. It grows after incidents and decisions.
 │   ├── 0025-shell-controller-overhaul-and-settings-page.md
 │   ├── 0026-bluetooth-picker-rs-scroll-mp3-ambient.md
 │   ├── 0027-shell-picker-fixes-and-altf4-power-menu.md
-│   └── 0028-sysinternals-autologon-and-bt-pairing-wizard.md
+│   ├── 0028-sysinternals-autologon-and-bt-pairing-wizard.md
+│   └── 0029-mute-launcher-audio-on-minimize.md
 │
 ├── chronicles/                        # PROJECT MILESTONES (how we got here)
 │   ├── 2026-05-26-mvp-m0-m11.md

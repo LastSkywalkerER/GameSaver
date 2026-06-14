@@ -28,6 +28,7 @@ import {
   playBack,
   playMove,
   playSelect,
+  setMuted,
   startAmbient,
   stopAmbient,
   subscribeSoundPack,
@@ -304,6 +305,11 @@ export function ShellApp({
     try {
       await api.LaunchGame(g.game.id, inst.id);
       api.MinimizeSelf();
+      // Silence the whole launcher (ambient pad + nav tones) while the game
+      // is foreground. The shell is now minimized, but WebView2 won't fire
+      // visibilitychange on minimize, so mute explicitly here rather than
+      // relying on the onVis handler. Unmuted on game exit (playtime:changed).
+      setMuted(true);
     } catch (e) {
       api.Toast("error", "Не удалось запустить: " + String(e));
     }
@@ -312,7 +318,14 @@ export function ShellApp({
   // Bring the shell back when a game session ends.
   useEffect(() => {
     const off = EventsOn("playtime:changed", (p: any) => {
-      if (p && p.endedAt) api.RestoreSelf();
+      if (p && p.endedAt) {
+        api.RestoreSelf();
+        // Game over → shell is back in front: lift the mute and make sure the
+        // ambient pad is running again (startAmbient no-ops if it survived the
+        // session; rebuilds it if a stray visibilitychange tore it down).
+        setMuted(false);
+        startAmbient();
+      }
     });
     return () => { try { (off as any)?.(); } catch {} };
   }, []);
