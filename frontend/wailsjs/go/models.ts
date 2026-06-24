@@ -72,11 +72,29 @@ export namespace backup {
 
 export namespace bluetooth {
 	
+	export class ConnectResult {
+	    ok: boolean;
+	    status: string;
+	    detail: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConnectResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.status = source["status"];
+	        this.detail = source["detail"];
+	    }
+	}
 	export class Device {
 	    id: string;
 	    address: string;
 	    name: string;
 	    connected: boolean;
+	    paired: boolean;
+	    remembered: boolean;
 	    isAudio: boolean;
 	    classHex: string;
 	
@@ -90,6 +108,8 @@ export namespace bluetooth {
 	        this.address = source["address"];
 	        this.name = source["name"];
 	        this.connected = source["connected"];
+	        this.paired = source["paired"];
+	        this.remembered = source["remembered"];
 	        this.isAudio = source["isAudio"];
 	        this.classHex = source["classHex"];
 	    }
@@ -350,6 +370,69 @@ export namespace domain {
 		}
 	}
 	
+	export class OwnershipFact {
+	    store: string;
+	    accountId: string;
+	    accountName: string;
+	    storeAppId: string;
+	    owned: boolean;
+	    installed: boolean;
+	    playtimeMin?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OwnershipFact(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.store = source["store"];
+	        this.accountId = source["accountId"];
+	        this.accountName = source["accountName"];
+	        this.storeAppId = source["storeAppId"];
+	        this.owned = source["owned"];
+	        this.installed = source["installed"];
+	        this.playtimeMin = source["playtimeMin"];
+	    }
+	}
+	export class LibraryCard {
+	    game?: Game;
+	    ownership: OwnershipFact[];
+	    installations: Installation[];
+	    anyInstalled: boolean;
+	    imageUrl?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryCard(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.game = this.convertValues(source["game"], Game);
+	        this.ownership = this.convertValues(source["ownership"], OwnershipFact);
+	        this.installations = this.convertValues(source["installations"], Installation);
+	        this.anyInstalled = source["anyInstalled"];
+	        this.imageUrl = source["imageUrl"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class PlaySession {
 	    id: string;
 	    gameId: string;
@@ -375,6 +458,35 @@ export namespace domain {
 	    }
 	}
 	
+	
+	export class StoreAccount {
+	    id: string;
+	    store: string;
+	    externalId: string;
+	    displayName: string;
+	    avatarUrl?: string;
+	    addedAt: number;
+	    lastSyncAt?: number;
+	    lastSyncError?: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StoreAccount(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.store = source["store"];
+	        this.externalId = source["externalId"];
+	        this.displayName = source["displayName"];
+	        this.avatarUrl = source["avatarUrl"];
+	        this.addedAt = source["addedAt"];
+	        this.lastSyncAt = source["lastSyncAt"];
+	        this.lastSyncError = source["lastSyncError"];
+	        this.enabled = source["enabled"];
+	    }
+	}
 
 }
 
@@ -532,6 +644,49 @@ export namespace pipeline {
 	        this.installationsTotal = source["installationsTotal"];
 	        this.perSource = source["perSource"];
 	        this.durationMs = source["durationMs"];
+	    }
+	}
+
+}
+
+export namespace stores {
+	
+	export class ClientStatus {
+	    store: string;
+	    installed: boolean;
+	    exePath: string;
+	    openUri: string;
+	    downloadUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClientStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.store = source["store"];
+	        this.installed = source["installed"];
+	        this.exePath = source["exePath"];
+	        this.openUri = source["openUri"];
+	        this.downloadUrl = source["downloadUrl"];
+	    }
+	}
+	export class LoginInfo {
+	    store: string;
+	    url: string;
+	    hint: string;
+	    interactive: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LoginInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.store = source["store"];
+	        this.url = source["url"];
+	        this.hint = source["hint"];
+	        this.interactive = source["interactive"];
 	    }
 	}
 

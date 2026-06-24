@@ -93,6 +93,52 @@ export interface GameView {
   snapshots: Snapshot[];
 }
 
+// ─── Store libraries (#5) ──────────────────────────────────────────────────
+
+export interface StoreAccount {
+  id: string;
+  store: SourceKind;
+  externalId: string;
+  displayName: string;
+  avatarUrl?: string;
+  addedAt: number;
+  lastSyncAt?: number;
+  lastSyncError?: string;
+  enabled: boolean;
+}
+
+export interface OwnershipFact {
+  store: SourceKind;
+  accountId: string;
+  accountName: string;
+  storeAppId: string;
+  owned: boolean;
+  installed: boolean;
+  playtimeMin?: number;
+}
+
+export interface LibraryCard {
+  game: Game;
+  ownership: OwnershipFact[];
+  installations: Installation[];
+  anyInstalled: boolean;
+  imageUrl?: string;
+}
+
+export interface StoreLoginInfo {
+  store: SourceKind;
+  url: string;
+  hint: string;
+  interactive: boolean;
+}
+
+export interface StoreClientStatus {
+  store: SourceKind;
+  installed: boolean;
+  openUri: string;
+  downloadUrl: string;
+}
+
 export interface ScanResult {
   gamesUpserted: number;
   installationsTotal: number;

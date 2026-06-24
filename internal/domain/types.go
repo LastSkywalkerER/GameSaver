@@ -133,6 +133,62 @@ type GameView struct {
 	Snapshots     []*Snapshot     `json:"snapshots"`
 }
 
+// ─── Store libraries (#5): online owned libraries across Steam/GOG/Epic/EA ──
+
+// StoreAccount is one connected store account (multiple per store allowed).
+type StoreAccount struct {
+	ID            string     `json:"id"`
+	Store         SourceKind `json:"store"`
+	ExternalID    string     `json:"externalId"` // SteamID64 / gog user_id / epic account_id / ea label-hash
+	DisplayName   string     `json:"displayName"`
+	AvatarURL     string     `json:"avatarUrl,omitempty"`
+	AddedAt       int64      `json:"addedAt"`
+	LastSyncAt    int64      `json:"lastSyncAt,omitempty"`
+	LastSyncError string     `json:"lastSyncError,omitempty"` // '' = ok; else e.g. "private profile"
+	Enabled       bool       `json:"enabled"`
+}
+
+// OwnedTitle is one game owned on one account. The same game on two accounts is
+// two rows; game_id links both to one canonical Game once merged.
+type OwnedTitle struct {
+	ID          string     `json:"id"`
+	AccountID   string     `json:"accountId"`
+	Store       SourceKind `json:"store"`
+	StoreAppID  string     `json:"storeAppId"`
+	Title       string     `json:"title"`
+	SteamAppID  int64      `json:"steamAppId,omitempty"`
+	GameID      string     `json:"gameId,omitempty"`
+	PlaytimeMin int64      `json:"playtimeMin,omitempty"`
+	IconURL     string     `json:"iconUrl,omitempty"`
+	Extra       string     `json:"extra,omitempty"`
+	FirstSeenAt int64      `json:"firstSeenAt"`
+	LastSeenAt  int64      `json:"lastSeenAt"`
+}
+
+// OwnershipFact is one (store, account) ownership row on a merged LibraryCard.
+type OwnershipFact struct {
+	Store       SourceKind `json:"store"`
+	AccountID   string     `json:"accountId"`
+	AccountName string     `json:"accountName"`
+	StoreAppID  string     `json:"storeAppId"`
+	Owned       bool       `json:"owned"`
+	Installed   bool       `json:"installed"` // owned AND a same-store install exists
+	PlaytimeMin int64      `json:"playtimeMin,omitempty"`
+}
+
+// LibraryCard is one merged game for the store-library UI: a single card that
+// lists per-(store, account) ownership facts and the local installs.
+type LibraryCard struct {
+	Game          *Game            `json:"game"`
+	Ownership     []*OwnershipFact `json:"ownership"`
+	Installations []*Installation  `json:"installations"`
+	AnyInstalled  bool             `json:"anyInstalled"`
+	// ImageURL is a remote cover URL from the store (GOG/Epic art), used by the
+	// UI when there's no local CoverPath — so owned-but-not-installed cards get
+	// art without a SteamGridDB key. (Steam cards use the CDN-by-appid instead.)
+	ImageURL string `json:"imageUrl,omitempty"`
+}
+
 // SnapshotManifest is what we write next to each .zip backup.
 type SnapshotManifest struct {
 	GameName     string         `json:"gameName"`

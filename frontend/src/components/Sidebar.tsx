@@ -4,9 +4,9 @@ import { api } from "../api";
 import { useT } from "../i18n";
 import { useControllerConnected } from "../controller";
 
-// "library" is gone — it was a near-duplicate of dashboard. If we ever
-// bring back a "flat list" view it can have its own page key.
-export type Page = "dashboard" | "backups" | "settings";
+// "library" is gone — it was a near-duplicate of dashboard. "stores" is the
+// new multi-account store-library tab (#5).
+export type Page = "dashboard" | "stores" | "backups" | "settings";
 
 const COLLAPSE_KEY = "gs:sidebarCollapsed";
 
@@ -36,6 +36,7 @@ export function Sidebar({
 
   const items: { id: Page; label: string; icon: string }[] = [
     { id: "dashboard", label: t("nav.dashboard"), icon: "▦" },
+    { id: "stores",    label: "Магазины",         icon: "🛒" },
     { id: "backups",   label: t("nav.backups"),   icon: "⛁" },
     { id: "settings",  label: t("nav.settings"),  icon: "⚙" },
   ];

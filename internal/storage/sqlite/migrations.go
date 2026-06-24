@@ -100,6 +100,41 @@ var migrations = []string{
 		source TEXT NOT NULL DEFAULT 'auto'
 	);`,
 	`CREATE INDEX IF NOT EXISTS idx_sessions_game ON play_sessions(game_id, started_at DESC);`,
+
+	// store_accounts / owned_titles — online store libraries (#5). One row per
+	// connected account; one owned_titles row per game per account (so the same
+	// game on two accounts is two rows). game_id links to the canonical games
+	// row once the merger resolves it (NULL until then).
+	`CREATE TABLE IF NOT EXISTS store_accounts (
+		id TEXT PRIMARY KEY,
+		store TEXT NOT NULL,
+		external_id TEXT NOT NULL,
+		display_name TEXT NOT NULL DEFAULT '',
+		avatar_url TEXT NOT NULL DEFAULT '',
+		added_at INTEGER NOT NULL,
+		last_sync_at INTEGER NOT NULL DEFAULT 0,
+		last_sync_error TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		UNIQUE(store, external_id)
+	);`,
+	`CREATE TABLE IF NOT EXISTS owned_titles (
+		id TEXT PRIMARY KEY,
+		account_id TEXT NOT NULL REFERENCES store_accounts(id) ON DELETE CASCADE,
+		store TEXT NOT NULL,
+		store_app_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		steam_app_id INTEGER NOT NULL DEFAULT 0,
+		game_id TEXT,
+		playtime_min INTEGER NOT NULL DEFAULT 0,
+		icon_url TEXT NOT NULL DEFAULT '',
+		extra TEXT NOT NULL DEFAULT '',
+		first_seen_at INTEGER NOT NULL,
+		last_seen_at INTEGER NOT NULL,
+		UNIQUE(account_id, store_app_id)
+	);`,
+	`CREATE INDEX IF NOT EXISTS idx_owned_account ON owned_titles(account_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_owned_game ON owned_titles(game_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_owned_steam ON owned_titles(steam_app_id);`,
 }
 
 // extraColumns is run AFTER the main statements to retrofit columns onto an

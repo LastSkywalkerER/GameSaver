@@ -20,14 +20,15 @@ import { isNavSoundEnabled, playSelect, setNavSoundEnabled } from "../../sound";
 import { useState } from "react";
 
 export type CornerIconKey =
-  | "sound" | "devices" | "backups" | "settings" | "power";
+  | "sound" | "devices" | "library" | "backups" | "settings" | "power";
 
 export const CORNER_ICON_ORDER: CornerIconKey[] = [
-  "sound", "devices", "backups", "settings", "power",
+  "sound", "devices", "library", "backups", "settings", "power",
 ];
 
 export function CornerIcons({
   onPickDevices,
+  onLibrary,
   onPower,
   onSettings,
   onBackups,
@@ -35,6 +36,7 @@ export function CornerIcons({
   onFocusChange,
 }: {
   onPickDevices: () => void;
+  onLibrary: () => void;
   onPower: () => void;
   onSettings: () => void;
   onBackups: () => void;
@@ -57,6 +59,7 @@ export function CornerIcons({
   const ACTIONS: Record<CornerIconKey, () => void> = {
     sound: toggleSound,
     devices: onPickDevices,
+    library: onLibrary,
     backups: onBackups,
     settings: onSettings,
     power: onPower,
@@ -94,23 +97,30 @@ export function CornerIcons({
       <IconButton
         i={2}
         focused={focused}
-        title="Бэкапы"
-        onClick={onBackups}
+        title="Библиотека магазинов (Steam / GOG / Epic / EA)"
+        onClick={onLibrary}
         onFocus={() => onFocusChange(2)}
-      >⛁</IconButton>
+      >🛒</IconButton>
       <IconButton
         i={3}
         focused={focused}
-        title="Настройки (Y на геймпаде)"
-        onClick={onSettings}
+        title="Бэкапы"
+        onClick={onBackups}
         onFocus={() => onFocusChange(3)}
-      >⚙</IconButton>
+      >⛁</IconButton>
       <IconButton
         i={4}
         focused={focused}
+        title="Настройки (Y на геймпаде)"
+        onClick={onSettings}
+        onFocus={() => onFocusChange(4)}
+      >⚙</IconButton>
+      <IconButton
+        i={5}
+        focused={focused}
         title="Питание (Lock / Sleep / Reboot / Exit) — X / Start на геймпаде"
         onClick={onPower}
-        onFocus={() => onFocusChange(4)}
+        onFocus={() => onFocusChange(5)}
       >⏻</IconButton>
     </div>
   );

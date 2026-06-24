@@ -6,6 +6,14 @@ export function AddManualSaveLocation(arg1, arg2) {
   return window['go']['main']['App']['AddManualSaveLocation'](arg1, arg2);
 }
 
+export function AddSteamAccountViaLogin() {
+  return window['go']['main']['App']['AddSteamAccountViaLogin']();
+}
+
+export function AddStoreAccount(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['AddStoreAccount'](arg1, arg2, arg3, arg4);
+}
+
 export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
@@ -66,6 +74,10 @@ export function FinishMonitorPick(arg1) {
   return window['go']['main']['App']['FinishMonitorPick'](arg1);
 }
 
+export function GetAggregatedLibrary() {
+  return window['go']['main']['App']['GetAggregatedLibrary']();
+}
+
 export function GetAutoLoginStatus() {
   return window['go']['main']['App']['GetAutoLoginStatus']();
 }
@@ -84,6 +96,14 @@ export function GetGame(arg1) {
 
 export function GetShellModeStatus() {
   return window['go']['main']['App']['GetShellModeStatus']();
+}
+
+export function GetStoreClients() {
+  return window['go']['main']['App']['GetStoreClients']();
+}
+
+export function GetStoreLoginInfo(arg1) {
+  return window['go']['main']['App']['GetStoreLoginInfo'](arg1);
 }
 
 export function GetSunshineStatus() {
@@ -130,6 +150,10 @@ export function ListPlaySessions(arg1, arg2) {
   return window['go']['main']['App']['ListPlaySessions'](arg1, arg2);
 }
 
+export function ListStoreAccounts() {
+  return window['go']['main']['App']['ListStoreAccounts']();
+}
+
 export function LockWorkstation() {
   return window['go']['main']['App']['LockWorkstation']();
 }
@@ -154,8 +178,20 @@ export function OpenBackupFolder() {
   return window['go']['main']['App']['OpenBackupFolder']();
 }
 
+export function OpenStoreClient(arg1) {
+  return window['go']['main']['App']['OpenStoreClient'](arg1);
+}
+
+export function OpenStoreLoginPage(arg1) {
+  return window['go']['main']['App']['OpenStoreLoginPage'](arg1);
+}
+
 export function OpenSysinternalsAutologon() {
   return window['go']['main']['App']['OpenSysinternalsAutologon']();
+}
+
+export function OpenURL(arg1) {
+  return window['go']['main']['App']['OpenURL'](arg1);
 }
 
 export function OpenWindowsBluetoothSettings() {
@@ -164,6 +200,10 @@ export function OpenWindowsBluetoothSettings() {
 
 export function OpenWindowsSoundSettings() {
   return window['go']['main']['App']['OpenWindowsSoundSettings']();
+}
+
+export function PairBluetoothDevice(arg1) {
+  return window['go']['main']['App']['PairBluetoothDevice'](arg1);
 }
 
 export function PickFolder(arg1) {
@@ -194,6 +234,10 @@ export function RemoveSaveLocation(arg1) {
   return window['go']['main']['App']['RemoveSaveLocation'](arg1);
 }
 
+export function RemoveStoreAccount(arg1) {
+  return window['go']['main']['App']['RemoveStoreAccount'](arg1);
+}
+
 export function RestartApp() {
   return window['go']['main']['App']['RestartApp']();
 }
@@ -212,6 +256,10 @@ export function RestoreSnapshot(arg1, arg2) {
 
 export function ReverseScanSaves() {
   return window['go']['main']['App']['ReverseScanSaves']();
+}
+
+export function ScanBluetoothDevices() {
+  return window['go']['main']['App']['ScanBluetoothDevices']();
 }
 
 export function ScanLibrary() {
@@ -244,6 +292,14 @@ export function SetRetentionKeepN(arg1) {
 
 export function SetSteamGridDBKey(arg1) {
   return window['go']['main']['App']['SetSteamGridDBKey'](arg1);
+}
+
+export function SetSteamWebAPIKey(arg1) {
+  return window['go']['main']['App']['SetSteamWebAPIKey'](arg1);
+}
+
+export function SetStoreAccountEnabled(arg1, arg2) {
+  return window['go']['main']['App']['SetStoreAccountEnabled'](arg1, arg2);
 }
 
 export function SetTheme(arg1) {
@@ -284,6 +340,14 @@ export function SunshineClear() {
 
 export function SunshineSync() {
   return window['go']['main']['App']['SunshineSync']();
+}
+
+export function SyncStoreAccount(arg1) {
+  return window['go']['main']['App']['SyncStoreAccount'](arg1);
+}
+
+export function SyncStoreLibraries() {
+  return window['go']['main']['App']['SyncStoreLibraries']();
 }
 
 export function Toast(arg1, arg2) {

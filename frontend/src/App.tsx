@@ -6,6 +6,7 @@ import { Toaster } from "./components/Toaster";
 import { GameDrawer } from "./components/GameDrawer";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { DashboardPage } from "./pages/DashboardPage";
+import { StorePage } from "./pages/StorePage";
 import { BackupsPage } from "./pages/BackupsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { setLanguage, useT } from "./i18n";
@@ -138,7 +139,7 @@ export default function App() {
   // Per-page navigation (d-pad + A) is handled inside the relevant page.
   // In shell mode the entire desktop UI is replaced by ShellApp, which has
   // its own controller bindings — short-circuit here to avoid double-handling.
-  const pages: Page[] = ["dashboard", "backups", "settings"];
+  const pages: Page[] = ["dashboard", "stores", "backups", "settings"];
   useControllerButton((btn) => {
     if (shellMode) return;
     if (btn === "b" && opened) {
@@ -208,6 +209,7 @@ export default function App() {
               scanned={scanned || totalCount > 0}
             />
           )}
+          {page === "stores" && <StorePage />}
           {page === "backups" && <BackupsPage games={games} />}
           {page === "settings" && <SettingsPage />}
         </div>

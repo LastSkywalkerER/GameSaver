@@ -14,10 +14,13 @@ import (
 )
 
 var (
-	user32               = syscall.NewLazyDLL("user32.dll")
-	procFindWindowW      = user32.NewProc("FindWindowW")
-	procSetWindowPos     = user32.NewProc("SetWindowPos")
-	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
+	user32                  = syscall.NewLazyDLL("user32.dll")
+	procFindWindowW         = user32.NewProc("FindWindowW")
+	procSetWindowPos        = user32.NewProc("SetWindowPos")
+	procGetSystemMetrics    = user32.NewProc("GetSystemMetrics")
+	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
+	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	procShowWindow          = user32.NewProc("ShowWindow")
 )
 
 const (
@@ -29,6 +32,9 @@ const (
 	swpNoZOrder   = 0x0004
 	swpNoActivate = 0x0010
 	swpShowWindow = 0x0040
+
+	swMinimize = 6 // SW_MINIMIZE — minimize and activate the next top-level window
+	swRestore  = 9 // SW_RESTORE — restore from minimized/maximized and activate
 )
 
 // i32 packs a (possibly negative) int into the low 32 bits of a uintptr so
@@ -70,4 +76,34 @@ func MoveToRect(x, y, w, h int) {
 	if hwnd := findSelf(); hwnd != 0 {
 		procSetWindowPos.Call(hwnd, 0, i32(x), i32(y), i32(w), i32(h), swpNoZOrder|swpShowWindow)
 	}
+}
+
+// ForegroundWindow returns the HWND of the window the user is currently
+// working in — while a game is in front, this is the game's window. Used by
+// the game↔launcher toggle hotkey to know which window to minimize.
+func ForegroundWindow() uintptr {
+	h, _, _ := procGetForegroundWindow.Call()
+	return h
+}
+
+// SelfWindow returns our own top-level window handle (or 0 if not found yet),
+// so callers can avoid acting on the launcher when they meant the game.
+func SelfWindow() uintptr { return findSelf() }
+
+// MinimizeWindow minimizes an arbitrary top-level window (the running game) and
+// lets Windows activate whatever is behind it.
+func MinimizeWindow(hwnd uintptr) {
+	if hwnd != 0 {
+		procShowWindow.Call(hwnd, swMinimize)
+	}
+}
+
+// RestoreAndForeground un-minimizes a window and pulls it back to the front —
+// the toggle's "switch back to the game" half.
+func RestoreAndForeground(hwnd uintptr) {
+	if hwnd == 0 {
+		return
+	}
+	procShowWindow.Call(hwnd, swRestore)
+	procSetForegroundWindow.Call(hwnd)
 }

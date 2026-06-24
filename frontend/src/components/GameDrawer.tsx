@@ -151,9 +151,21 @@ export function GameDrawer({
 
   async function doBackup() {
     setBusy("backup");
+    api.Toast("info", `Бэкаплю ${view.game.name}…`);
     try {
-      await api.BackupGame(view.game.id);
+      const snaps = await api.BackupGame(view.game.id);
+      const n = Array.isArray(snaps) ? snaps.length : 0;
+      if (n > 0) {
+        api.Toast("success", `Бэкап готов: ${n} ${n === 1 ? "новый снимок" : "новых снимков"}`);
+      } else {
+        // The engine skips a save location whose content hash matches the
+        // latest snapshot — so re-backing-up an UNCHANGED save makes no new
+        // zip. Say so explicitly, otherwise the button looks broken.
+        api.Toast("info", "Сейв не изменился с прошлого бэкапа — новый снимок не нужен");
+      }
       onChanged();
+    } catch (e) {
+      api.Toast("error", "Бэкап не удался: " + String(e));
     } finally { setBusy(null); }
   }
   async function doLaunch(installID: string) {
@@ -368,7 +380,7 @@ export function GameDrawer({
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">{t("drawer.saveLocations")}</h3>
               <button className="btn btn-primary" disabled={busy === "backup" || view.saveLocations.length === 0} onClick={doBackup}>
-                ⛁ {t("actions.backup")}
+                ⛁ {busy === "backup" ? "Бэкаплю…" : t("actions.backup")}
               </button>
             </div>
             {view.saveLocations.length === 0 && <p className="text-sm text-muted">{t("drawer.noSaves")}</p>}

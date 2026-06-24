@@ -58,7 +58,7 @@ export function DevicesMenu({
     },
     {
       key: "bluetooth", icon: "📶", label: "Bluetooth",
-      desc: "Подключить парные BT-наушники. Пайринг — через Параметры Windows; здесь только connect/disconnect.",
+      desc: "Поиск, сопряжение и подключение BT-наушников прямо здесь — без Параметров Windows.",
     },
   ];
 

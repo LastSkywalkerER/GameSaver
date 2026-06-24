@@ -27,6 +27,8 @@ frontend/dist/
 logs/
 cache/
 settings.json
+# DPAPI-encrypted store-account tokens (#5). Encrypted at rest, but never commit.
+secrets.dat
 
 # ---- IDE / editor ----
 .vscode/

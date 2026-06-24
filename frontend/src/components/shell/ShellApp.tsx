@@ -45,10 +45,11 @@ import { AudioPicker } from "./AudioPicker";
 import { BluetoothPicker } from "./BluetoothPicker";
 import { VolumePicker } from "./VolumePicker";
 import { DevicesMenu } from "./DevicesMenu";
+import { ShellLibrary } from "./ShellLibrary";
 import { PowerMenu } from "./PowerMenu";
 import { ShellUpdateModal } from "./ShellUpdateModal";
 
-type Overlay = "none" | "details" | "settings" | "backups" | "power" | "devices";
+type Overlay = "none" | "details" | "settings" | "backups" | "power" | "devices" | "library";
 
 export function ShellApp({
   games,
@@ -89,6 +90,11 @@ export function ShellApp({
   const audioAutoChainRef = useRef<boolean>(true);
   const [btOpen, setBtOpen] = useState(false);
   const [volOpen, setVolOpen] = useState(false);
+  // True while a launched game is running (set on launch, cleared on the
+  // playtime session-end event). Gates the Escape→monitor-picker shortcut so
+  // it fires only when the launcher itself is foreground, never mid-game
+  // (then Escape belongs to the game). See plan #3.
+  const [gameRunning, setGameRunning] = useState(false);
 
   const openPicker = useCallback(async () => {
     try {
@@ -187,7 +193,8 @@ export function ShellApp({
     overlay === "backups" ||
     overlay === "settings" ||
     overlay === "power" ||
-    overlay === "devices";
+    overlay === "devices" ||
+    overlay === "library";
   const inputBlocked = overlayBlocks || pickerOpen || audioOpen || btOpen || volOpen || updateModalOpen;
 
   useControllerNav((dir) => {
@@ -273,11 +280,17 @@ export function ShellApp({
       } else if (e.key === ",") {
         // Common "settings" shortcut.
         e.preventDefault(); playSelect(); setOverlay("settings");
+      } else if (e.key === "Escape" && !gameRunning) {
+        // Black-screen recovery: when the launcher itself is foreground (no
+        // game running), Escape opens the monitor picker — which spans the
+        // whole virtual desktop so it shows on whichever screen is actually
+        // lit. Gated on !gameRunning so mid-game Escape stays with the game.
+        e.preventDefault(); playSelect(); openPicker();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [overlayBlocks, active, moveCursor, moveCornerFocus, cornerFocus, pickerOpen, audioOpen, updateModalOpen]);
+  }, [overlayBlocks, active, moveCursor, moveCornerFocus, cornerFocus, pickerOpen, audioOpen, updateModalOpen, gameRunning, openPicker]);
 
   // ── Mouse wheel ─────────────────────────────────────────────────────
   const wheelLockRef = useRef(0);
@@ -310,6 +323,21 @@ export function ShellApp({
       // visibilitychange on minimize, so mute explicitly here rather than
       // relying on the onVis handler. Unmuted on game exit (playtime:changed).
       setMuted(true);
+      setGameRunning(true);
+    } catch (e) {
+      api.Toast("error", "Не удалось запустить: " + String(e));
+    }
+  }
+
+  // Launch a game by ids from the store-library overlay, then close the overlay.
+  async function launchByIds(gameId: string, installationId: string) {
+    playSelect();
+    try {
+      await api.LaunchGame(gameId, installationId);
+      api.MinimizeSelf();
+      setMuted(true);
+      setGameRunning(true);
+      setOverlay("none");
     } catch (e) {
       api.Toast("error", "Не удалось запустить: " + String(e));
     }
@@ -320,6 +348,7 @@ export function ShellApp({
     const off = EventsOn("playtime:changed", (p: any) => {
       if (p && p.endedAt) {
         api.RestoreSelf();
+        setGameRunning(false);
         // Game over → shell is back in front: lift the mute and make sure the
         // ambient pad is running again (startAmbient no-ops if it survived the
         // session; rebuilds it if a stray visibilitychange tore it down).
@@ -425,6 +454,7 @@ export function ShellApp({
 
       <CornerIcons
         onPickDevices={() => { playSelect(); setOverlay("devices"); }}
+        onLibrary={() => { playSelect(); setOverlay("library"); }}
         onPower={() => { playSelect(); setOverlay("power"); }}
         onSettings={() => { playSelect(); setOverlay("settings"); }}
         onBackups={() => { playSelect(); setOverlay("backups"); }}
@@ -500,6 +530,10 @@ export function ShellApp({
 
       {btOpen && <BluetoothPicker onDone={() => setBtOpen(false)} />}
       {volOpen && <VolumePicker onDone={() => setVolOpen(false)} />}
+
+      {overlay === "library" && (
+        <ShellLibrary onClose={() => { playBack(); setOverlay("none"); }} onLaunch={launchByIds} />
+      )}
 
       {updateModalOpen && update && (
         <ShellUpdateModal info={update} onDismiss={onDismissUpdate} />

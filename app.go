@@ -24,6 +24,7 @@ import (
 	"GameSaver/internal/controller"
 	"GameSaver/internal/display"
 	"GameSaver/internal/domain"
+	"GameSaver/internal/hotkey"
 	"GameSaver/internal/launcher"
 	"GameSaver/internal/match"
 	"GameSaver/internal/meta"
@@ -31,8 +32,10 @@ import (
 	"GameSaver/internal/power"
 	"GameSaver/internal/scan/dirsize"
 	"GameSaver/internal/scan/pipeline"
+	"GameSaver/internal/secrets"
 	"GameSaver/internal/shellmode"
 	"GameSaver/internal/storage/sqlite"
+	"GameSaver/internal/stores"
 	"GameSaver/internal/sunshine"
 	"GameSaver/internal/tray"
 	"GameSaver/internal/updater"
@@ -54,6 +57,9 @@ type App struct {
 	watcher    *watcher.Service
 	playtime   *playtime.Service
 	controller *controller.Service
+	hotkey     *hotkey.Service
+	secrets    *secrets.Vault
+	stores     *stores.Service
 
 	// Last update found by a Check (background, periodic, or manual). Reused
 	// by ApplyUpdate so it doesn't re-hit the GitHub API — a second
@@ -70,6 +76,20 @@ type App struct {
 	// "open the power menu" instead of killing the kiosk, but a genuine quit
 	// must still go through. Set by QuitApp before runtime.Quit.
 	quitRequested atomic.Bool
+
+	// Game↔launcher foreground toggle (shell-mode global hotkey, #4):
+	//   gameRunning — a launched game session is active (set in LaunchGame,
+	//                 cleared on the playtime session-end event).
+	//   gameFg      — true while the game is the foreground window (we're
+	//                 minimized); false while the launcher is in front.
+	//   gameHWND    — the game window we minimized, so we can restore it.
+	gameRunning atomic.Bool
+	gameFg      atomic.Bool
+	gameHWND    atomic.Uintptr
+
+	// btScanning guards against stacking Bluetooth inquiries when the user
+	// mashes "rescan" (each inquiry blocks the radio ~6 s).
+	btScanning atomic.Bool
 }
 
 // Context returns the Wails runtime context once Startup has fired.
@@ -95,11 +115,34 @@ func (a *App) Startup(ctx context.Context) {
 	a.updater = updater.New(AppVersion)
 	a.watcher = watcher.New(a.cfg, a.db, a.bk)
 	a.playtime = playtime.New(a.db, func(ev string, payload any) {
+		// Backend-side game-state tracking for the foreground toggle hotkey
+		// (#4): a playtime session-end means the game closed and we're back in
+		// the launcher, so the toggle must go inert until the next launch.
+		if ev == "playtime:changed" {
+			if m, ok := payload.(map[string]any); ok {
+				if _, ended := m["endedAt"]; ended {
+					a.gameRunning.Store(false)
+					a.gameFg.Store(false)
+				}
+			}
+		}
 		if a.ctx != nil {
 			wailsruntime.EventsEmit(a.ctx, ev, payload)
 		}
 	})
 	a.playtime.Start(ctx)
+
+	// Store-library subsystem (#5): DPAPI token vault + provider orchestrator.
+	if vault, err := secrets.Open(a.cfg.UserDataDir); err == nil {
+		a.secrets = vault
+		a.stores = stores.New(a.db, vault, func(ev string, p any) {
+			if a.ctx != nil {
+				wailsruntime.EventsEmit(a.ctx, ev, p)
+			}
+		})
+	} else {
+		slog.Warn("secrets vault open", "err", err)
+	}
 
 	// Clean up the previous binary that minio/selfupdate leaves behind as a
 	// .<name>.old rollback file. We're now running the new exe, so the old
@@ -163,6 +206,18 @@ func (a *App) Startup(ctx context.Context) {
 		wailsruntime.EventsEmit(a.ctx, ev, payload)
 	})
 	go a.controller.Run(a.ctx)
+
+	// Global game↔launcher toggle hotkey — shell mode only. Lets the user flip
+	// between a running game and the launcher without Alt+Tab (#4). Uses a
+	// supported RegisterHotKey, never a low-level keyboard hook (anti-cheat).
+	if os.Getenv("GS_SHELL_MODE") == "1" {
+		a.hotkey = hotkey.New(a.toggleForegroundGame)
+		if combo := a.hotkey.Start(); combo != "" {
+			slog.Info("game↔launcher toggle hotkey active", "combo", combo)
+		} else {
+			slog.Warn("game↔launcher toggle hotkey: no combo could be registered")
+		}
+	}
 
 	// Monitor hot-plug watcher — emits "display:changed" when the user
 	// plugs / unplugs / re-arranges displays at runtime. Shell-mode UI
@@ -235,6 +290,9 @@ func (a *App) runUpdateCheck(manual bool) {
 }
 
 func (a *App) Shutdown(_ context.Context) {
+	if a.hotkey != nil {
+		a.hotkey.Stop()
+	}
 	if a.playtime != nil {
 		a.playtime.Stop()
 	}
@@ -332,6 +390,12 @@ func (a *App) ListGames() ([]*domain.GameView, error) {
 		gv, err := a.gameView(g)
 		if err != nil {
 			slog.Warn("build game view", "id", g.ID, "err", err)
+			continue
+		}
+		// The dashboard is "what's on this PC" (+ save-only games). Owned-but-
+		// not-installed store titles (no install, no save, no snapshot) belong
+		// ONLY to the Магазины tab — don't flood the dashboard with them (#5).
+		if len(gv.Installations) == 0 && len(gv.SaveLocations) == 0 && len(gv.Snapshots) == 0 {
 			continue
 		}
 		out = append(out, gv)
@@ -474,7 +538,15 @@ func (a *App) OpenBackupFolder() error {
 // ===== Launch =====
 
 func (a *App) LaunchGame(gameID string, installationID string) error {
-	return a.launch.Launch(gameID, installationID)
+	err := a.launch.Launch(gameID, installationID)
+	if err == nil {
+		// The shell frontend minimizes us right after this returns, so the game
+		// becomes the foreground window. Arm the foreground-toggle hotkey (#4):
+		// a game is running and it's in front. Cleared on the session-end event.
+		a.gameRunning.Store(true)
+		a.gameFg.Store(true)
+	}
+	return err
 }
 
 // ===== Misc =====
@@ -961,6 +1033,35 @@ func (a *App) RestoreSelf() {
 	}
 }
 
+// toggleForegroundGame flips between a running game and the launcher. Invoked
+// by the global hotkey (#4), so it can fire while the game owns the foreground.
+// No-op when no game is running. Reuses MinimizeSelf/RestoreSelf, which also
+// pause/resume XInput — so the pad drives the launcher only while the game is
+// minimized (not actively played), honoring the "don't poll XInput mid-game"
+// red line. Unexported so Wails doesn't bind it as a frontend method.
+func (a *App) toggleForegroundGame() {
+	if !a.gameRunning.Load() {
+		return
+	}
+	if a.gameFg.Load() {
+		// Game is in front → remember it, minimize it, raise the launcher.
+		// Guard against grabbing our own window if focus drifted.
+		if h := winutil.ForegroundWindow(); h != 0 && h != winutil.SelfWindow() {
+			a.gameHWND.Store(h)
+			winutil.MinimizeWindow(h)
+		}
+		a.RestoreSelf()
+		a.gameFg.Store(false)
+	} else {
+		// Launcher is in front → minimize it, restore the game we stashed.
+		a.MinimizeSelf()
+		if h := a.gameHWND.Load(); h != 0 {
+			winutil.RestoreAndForeground(h)
+		}
+		a.gameFg.Store(true)
+	}
+}
+
 // ===== Power (shell-mode parking) =====
 
 // LockWorkstation bounces the user to the Windows lock screen — same
@@ -1126,41 +1227,237 @@ func (a *App) OpenWindowsSoundSettings() error {
 // candidates.
 func (a *App) ListBluetoothDevices() ([]bluetooth.Device, error) { return bluetooth.List() }
 
-// ConnectBluetoothDevice tells Windows to enable every audio service
-// on the given paired device. The call BLOCKS for up to ~30s while
-// the radio negotiates with the headset — Wails marshals that into
-// a Promise.then on the JS side so the UI stays responsive.
-func (a *App) ConnectBluetoothDevice(deviceID string) error {
-	return bluetooth.Connect(deviceID)
+// ScanBluetoothDevices kicks off a background inquiry for nearby devices —
+// paired AND brand-new unpaired ones — emitting bluetooth:found per device and
+// bluetooth:scan-done when finished. Returns immediately; the inquiry blocks
+// the radio ~6 s on a goroutine. Guarded so mashing "rescan" doesn't stack
+// inquiries.
+func (a *App) ScanBluetoothDevices() {
+	if a.ctx == nil {
+		return
+	}
+	if !a.btScanning.CompareAndSwap(false, true) {
+		return // a scan is already running
+	}
+	emit := func(ev string, p any) { wailsruntime.EventsEmit(a.ctx, ev, p) }
+	go func() {
+		defer a.btScanning.Store(false)
+		emit("bluetooth:scan-start", nil)
+		devs, err := bluetooth.Discover(emit)
+		if err != nil {
+			emit("bluetooth:scan-error", err.Error())
+			return
+		}
+		emit("bluetooth:scan-done", map[string]any{"count": len(devs)})
+	}()
 }
 
-// DisconnectBluetoothDevice flips the audio services off. Same
-// blocking semantics as Connect.
+// PairBluetoothDevice authenticates a discovered (unpaired) device and enables
+// its audio. Runs on a goroutine (pairing blocks); emits bluetooth:pair-start /
+// pair-done and a bluetooth:device-changed so the picker refreshes.
+func (a *App) PairBluetoothDevice(deviceID string) {
+	if a.ctx == nil {
+		return
+	}
+	emit := func(ev string, p any) { wailsruntime.EventsEmit(a.ctx, ev, p) }
+	go func() {
+		if err := bluetooth.Pair(deviceID, emit); err != nil {
+			slog.Warn("bluetooth pair", "id", deviceID, "err", err)
+		}
+		emit("bluetooth:device-changed", deviceID)
+	}()
+}
+
+// ConnectBluetoothDevice enables every audio service on the given paired
+// device and returns a classified result (connected / unreachable /
+// no-audio-profile / not-paired) so the UI can show an actionable hint instead
+// of a hard error. BLOCKS up to ~30 s while the radio negotiates — Wails
+// marshals that into a Promise on the JS side.
+func (a *App) ConnectBluetoothDevice(deviceID string) (bluetooth.ConnectResult, error) {
+	return bluetooth.ConnectEx(deviceID)
+}
+
+// DisconnectBluetoothDevice flips the audio services off. Same blocking
+// semantics as Connect.
 func (a *App) DisconnectBluetoothDevice(deviceID string) error {
 	return bluetooth.Disconnect(deviceID)
 }
 
-// OpenWindowsBluetoothSettings opens the Windows "Add a device" pairing
-// wizard. Used as the "I want to PAIR a new device" action from inside the
-// BluetoothPicker — pairing is the scope-creep we left out of the in-app
-// picker (connect/disconnect of already-paired devices).
+// OpenWindowsBluetoothSettings opens the Windows "Add a device" pairing wizard.
+// Since the picker now does in-app discovery + pairing for classic/dual-mode
+// headsets, this is the FALLBACK for the BLE-only long tail that the classic
+// inquiry API can't surface (true BLE discovery needs WinRT, no Go bindings).
 func (a *App) OpenWindowsBluetoothSettings() error {
-	// DevicePairingWizard.exe is the classic standalone "Add a device" wizard:
-	// it scans for and pairs Bluetooth / wireless devices, and is a plain
-	// Win32 exe in System32 — so it works in shell mode without Explorer or the
-	// immersive Settings app.
+	// Open the Bluetooth-SPECIFIC Settings page — NOT DevicePairingWizard.exe,
+	// which is the GENERIC "Add a device" wizard that also lists printers /
+	// network devices ("устройство или принтер") — the user's complaint. Since
+	// the in-app picker now does discovery + pairing itself, this button is only
+	// the BLE-only fallback, so it must land directly on Bluetooth.
 	//
-	// 🔴 NOT fsquirt.exe. v0.10.1 launched fsquirt here believing it was the
-	// add-device flow — fsquirt is the "Bluetooth File Transfer" wizard (send/
-	// receive files), so the "Запарить новое" button dropped the user into a
-	// file-transfer dialog instead of pairing. See decisions/0028 (and the
-	// now-corrected note in 0026).
-	if err := exec.Command("DevicePairingWizard.exe").Start(); err != nil {
-		// Fallback: classic Bluetooth control-panel applet.
-		return exec.Command("control.exe", "bthprops.cpl").Start()
+	// `explorer.exe <ms-settings: URI>` hands the URI to SystemSettings and the
+	// spawned explorer process exits — it does NOT try to become the shell, so
+	// this works in shell-replacement mode too. (This supersedes decision 0028's
+	// DevicePairingWizard choice now that pairing is in-app.)
+	//
+	// 🔴 NOT fsquirt.exe (that's the Bluetooth File Transfer wizard, decisions/0028).
+	if err := exec.Command("explorer.exe", "ms-settings:bluetooth").Start(); err == nil {
+		return nil
+	}
+	// Fallbacks: the classic Bluetooth control-panel applet, then (last resort)
+	// the generic device wizard.
+	if err := exec.Command("control.exe", "bthprops.cpl").Start(); err == nil {
+		return nil
+	}
+	return exec.Command("DevicePairingWizard.exe").Start()
+}
+
+// ===== Store libraries (#5: online owned libraries across stores) =====
+
+func (a *App) ListStoreAccounts() ([]*domain.StoreAccount, error) {
+	if a.db == nil {
+		return nil, nil
+	}
+	return a.db.ListStoreAccounts()
+}
+
+// GetStoreClients reports whether each store's desktop client is installed on
+// this PC (+ how to open or download it).
+func (a *App) GetStoreClients() []stores.ClientStatus {
+	return stores.DetectClients()
+}
+
+// OpenStoreClient launches the store's desktop client. Steam/GOG/Epic open
+// reliably via their PROTOCOL (the handler interprets it and shows the window).
+// EA's link2ea:// is a per-game deep-link that does NOT open the app, so for EA
+// we launch its exe directly. Falls back the other way if the first try fails.
+func (a *App) OpenStoreClient(store string) error {
+	for _, c := range stores.DetectClients() {
+		if string(c.Store) != store {
+			continue
+		}
+		if store == "ea" && c.ExePath != "" {
+			if err := exec.Command(c.ExePath).Start(); err == nil {
+				return nil
+			} else {
+				slog.Warn("open EA client exe", "exe", c.ExePath, "err", err)
+			}
+		}
+		if c.OpenURI != "" {
+			return browse(c.OpenURI)
+		}
+		if c.ExePath != "" {
+			return exec.Command(c.ExePath).Start()
+		}
 	}
 	return nil
 }
+
+// GetStoreLoginInfo returns how to connect an account for a store (the OAuth
+// URL to open + a paste hint), or an empty URL for non-interactive stores.
+func (a *App) GetStoreLoginInfo(store string) stores.LoginInfo {
+	if a.stores == nil {
+		return stores.LoginInfo{Store: domain.SourceKind(store)}
+	}
+	return a.stores.LoginInfo(domain.SourceKind(store))
+}
+
+// OpenStoreLoginPage opens the store's OAuth login page in the default browser.
+func (a *App) OpenStoreLoginPage(store string) error {
+	if a.stores == nil {
+		return nil
+	}
+	li := a.stores.LoginInfo(domain.SourceKind(store))
+	if li.URL == "" {
+		return nil
+	}
+	return browse(li.URL)
+}
+
+// AddStoreAccount connects an account. steamKey/ref are for Steam (ref is the
+// label for EA); authCode is the pasted OAuth code/URL for GOG/Epic. Blocks on
+// the network call; Wails marshals it into a Promise.
+func (a *App) AddStoreAccount(store, steamKey, ref, authCode string) (*domain.StoreAccount, error) {
+	if a.stores == nil {
+		return nil, fmt.Errorf("store subsystem unavailable")
+	}
+	return a.stores.AddAccount(a.ctx, domain.SourceKind(store), stores.AddAccountInput{
+		SteamKey: steamKey, SteamRef: ref, AuthCode: authCode,
+	})
+}
+
+// AddSteamAccountViaLogin runs "Sign in through Steam" in the browser and adds
+// the account with no API key (owned games read from the public profile). The
+// call blocks until login completes or times out (~3 min).
+func (a *App) AddSteamAccountViaLogin() (*domain.StoreAccount, error) {
+	if a.stores == nil {
+		return nil, fmt.Errorf("store subsystem unavailable")
+	}
+	return a.stores.AddSteamViaOpenID(a.ctx, func(u string) { _ = browse(u) })
+}
+
+// SetSteamWebAPIKey stores the shared Steam Web API key (reliable fallback when
+// the keyless community endpoint won't return a public library). Empty clears it.
+func (a *App) SetSteamWebAPIKey(key string) error {
+	if a.stores == nil {
+		return fmt.Errorf("store subsystem unavailable")
+	}
+	return a.stores.SetSteamKey(key)
+}
+
+func (a *App) RemoveStoreAccount(accountID string) error {
+	if a.db == nil {
+		return nil
+	}
+	err := a.db.DeleteStoreAccount(accountID)
+	if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "stores:library-changed", nil)
+	}
+	return err
+}
+
+func (a *App) SetStoreAccountEnabled(accountID string, enabled bool) error {
+	if a.db == nil {
+		return nil
+	}
+	return a.db.SetStoreAccountEnabled(accountID, enabled)
+}
+
+// SyncStoreLibraries refreshes every enabled account in the background.
+func (a *App) SyncStoreLibraries() {
+	if a.stores != nil {
+		go a.stores.SyncAll(a.ctx)
+	}
+}
+
+func (a *App) SyncStoreAccount(accountID string) {
+	if a.stores == nil {
+		return
+	}
+	go func() {
+		_ = a.stores.SyncAccount(a.ctx, accountID)
+		if a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "stores:library-changed", nil)
+		}
+	}()
+}
+
+// GetAggregatedLibrary returns the merged store library (one card per game,
+// per-account ownership facts, installed vs owned-but-not-installed).
+func (a *App) GetAggregatedLibrary() ([]*domain.LibraryCard, error) {
+	if a.stores == nil {
+		return nil, nil
+	}
+	return a.stores.GetAggregatedLibrary()
+}
+
+// browse opens a URL in the user's default browser.
+func browse(u string) error {
+	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", u).Start()
+}
+
+// OpenURL opens an arbitrary URL in the default browser (used by in-app guide
+// links, e.g. the Steam Web API key page).
+func (a *App) OpenURL(u string) error { return browse(u) }
 
 // OpenAutoLoginConfigurator unhides the netplwiz checkbox if needed
 // (triggering a single UAC prompt) and then opens netplwiz. The user
