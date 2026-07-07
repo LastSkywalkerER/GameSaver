@@ -241,10 +241,22 @@ JS-SDK клиент, которому те же endpoint'ы доверяют, и
 
 ---
 
-## Приложение — где взять лог
+## 5. Логирование — недолговечно (новая находка, 2026-07-07)
 
-`slog` пишет JSON в `%LOCALAPPDATA%\GameSaver\logs\gamesaver.log` (`internal/logging/logging.go:19`,
-`config.LogsDir()`). Нужны строки за момент воспроизведения:
-- аудио: ищи `SetDefaultEndpoint (role N) hr=0x…` и `CoInitializeEx hr=…`;
-- BT: ищи `SetServiceState … code …`, `bluetooth pair`, `bluetooth:scan-error`.
-Они однозначно разведут гипотезы F1.1/F1.4 и подтвердят/опровергнут F2.3.
+🟠 **F5.1 — лог обнуляется при нечистом завершении.** `logging.Setup` (`internal/logging/logging.go:19-27`)
+открывает `gamesaver.log` через `os.OpenFile(O_CREATE|O_APPEND|O_WRONLY)` и пишет через `slog` **без
+`f.Sync()`/flush**. Присланный лог оказался **210 047 байт чистых `0x00`** — классический NTFS
+zero-fill после жёсткого ресета / отключения питания (размер в метаданных записан, блоки данных не
+сброшены на диск). Для киоск-лаунчера, который усыпляет/выключает ПК, лог теряется ровно тогда, когда
+нужен для разбора зависания. Пути данных также разнесены: логи/БД/кэш → `%LOCALAPPDATA%\GameSaver\`
+(`os.UserCacheDir`), settings.json → `%APPDATA%\GameSaver\` (`os.UserConfigDir`).
+
+**Варианты решения:** `f.Sync()` после записи (или периодический flush по таймеру); ротация;
+дублирование критичных ошибок в Windows Event Log. До фикса — снимать лог только после чистого закрытия
+приложения / без hard-reset.
+
+**Как снять рабочий лог для F1/F2:** запустить в desktop-режиме → воспроизвести аудио/BT-ошибку →
+НЕ выключать ПК жёстко, подождать ~10 с → скопировать `gamesaver.log` и прислать копию. Искать:
+- аудио: `SetDefaultEndpoint (role N) hr=0x…`, `CoInitializeEx hr=…`;
+- BT: `SetServiceState … code …`, `bluetooth pair`, `bluetooth:scan-error`.
+Они однозначно разведут F1.1/F1.4 и подтвердят/опровергнут F2.3.
