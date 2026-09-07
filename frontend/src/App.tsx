@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, EventsOn, type GameView, type UpdateInfo } from "./api";
+import { api, EventsOn, type GameView, type SwitchStatus, type UpdateInfo } from "./api";
 import { Sidebar, type Page } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { Toaster } from "./components/Toaster";
@@ -8,6 +8,7 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { DashboardPage } from "./pages/DashboardPage";
 import { StorePage } from "./pages/StorePage";
 import { BackupsPage } from "./pages/BackupsPage";
+import { SwitchPage } from "./pages/SwitchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { setLanguage, useT } from "./i18n";
 import { useControllerButton } from "./controller";
@@ -28,6 +29,12 @@ export default function App() {
   const [opened, setOpened] = useState<GameView | null>(null);
   const [phase, setPhase] = useState<string>("");
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  // Console presence + the progress line for long MTP operations. Both are
+  // event-driven, so the status is also pulled once on mount — Wails does not
+  // replay events fired before we subscribed.
+  const [switchStatus, setSwitchStatus] = useState<SwitchStatus | null>(null);
+  const [switchProgress, setSwitchProgress] =
+    useState<{ phase: string; done: number; total: number; title: string } | null>(null);
   // Dashboard sort persists across restarts via localStorage. Falls back to
   // "name" for first-time users / cleared storage.
   const [sortBy, setSortByState] = useState<string>(() => {
@@ -53,6 +60,7 @@ export default function App() {
   useEffect(() => {
     api.GetConfig().then((c: any) => { if (c?.language) setLanguage(c.language); });
     api.GetShellModeStatus().then((s: any) => setShellMode(!!s?.runningAsShell)).catch(() => setShellMode(false));
+    (api as any).GetSwitchStatus?.().then((s: any) => setSwitchStatus(s as SwitchStatus)).catch(() => {});
     // Pull whatever the backend's already-completed update check found,
     // since Wails doesn't replay missed events. The shell branch in
     // particular mounts AFTER GetShellModeStatus resolves, so the
@@ -89,6 +97,13 @@ export default function App() {
     const offUpdate = EventsOn("update:available", (info: any) => {
       setUpdate(info as UpdateInfo);
     });
+    const offSwitchStatus = EventsOn("switch:status", (s: any) => setSwitchStatus(s as SwitchStatus));
+    const offSwitchProg = EventsOn("switch:progress", (p: any) => {
+      setSwitchProgress(p);
+      // Clear the line once the operation reports itself finished, so a stale
+      // "74/74" doesn't sit there until the next scan.
+      if (p && p.total > 0 && p.done >= p.total) setTimeout(() => setSwitchProgress(null), 1200);
+    });
     const offInstSize = EventsOn("inst:size", () => { refresh(); });
     // Playtime tracker fires on every session start/end so tile chips
     // (last-played, total time) refresh as games come and go — critical
@@ -103,7 +118,7 @@ export default function App() {
       refresh();
     });
     return () => {
-      try { (offProg as any)?.(); (offSrc as any)?.(); (offGame as any)?.(); (offMatch as any)?.(); (offMeta as any)?.(); (offDone as any)?.(); (offRevProg as any)?.(); (offRevDone as any)?.(); (offReconcile as any)?.(); (offUpdate as any)?.(); (offInstSize as any)?.(); (offPlay as any)?.(); } catch {}
+      try { (offProg as any)?.(); (offSrc as any)?.(); (offGame as any)?.(); (offMatch as any)?.(); (offMeta as any)?.(); (offDone as any)?.(); (offRevProg as any)?.(); (offRevDone as any)?.(); (offReconcile as any)?.(); (offUpdate as any)?.(); (offInstSize as any)?.(); (offPlay as any)?.(); (offSwitchStatus as any)?.(); (offSwitchProg as any)?.(); } catch {}
     };
   }, []);
 
@@ -139,7 +154,7 @@ export default function App() {
   // Per-page navigation (d-pad + A) is handled inside the relevant page.
   // In shell mode the entire desktop UI is replaced by ShellApp, which has
   // its own controller bindings — short-circuit here to avoid double-handling.
-  const pages: Page[] = ["dashboard", "stores", "backups", "settings"];
+  const pages: Page[] = ["dashboard", "stores", "switch", "backups", "settings"];
   useControllerButton((btn) => {
     if (shellMode) return;
     if (btn === "b" && opened) {
@@ -169,6 +184,7 @@ export default function App() {
           refresh={refresh}
           update={update}
           onDismissUpdate={() => setUpdate(null)}
+          switchStatus={switchStatus}
         />
         <Toaster />
       </>
@@ -177,7 +193,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen text-gray-100">
-      <Sidebar page={page} onNavigate={setPage} />
+      <Sidebar page={page} onNavigate={setPage} switchConnected={!!switchStatus?.connected} />
       <main className="flex flex-1 flex-col overflow-hidden">
         {update && update.available && (
           <UpdateBanner info={update} onDismiss={() => setUpdate(null)} />
@@ -210,6 +226,9 @@ export default function App() {
             />
           )}
           {page === "stores" && <StorePage />}
+          {page === "switch" && (
+            <SwitchPage status={switchStatus} games={games} progress={switchProgress} />
+          )}
           {page === "backups" && <BackupsPage games={games} />}
           {page === "settings" && <SettingsPage />}
         </div>

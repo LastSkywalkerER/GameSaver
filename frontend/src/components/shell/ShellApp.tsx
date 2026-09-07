@@ -21,7 +21,7 @@
 // is far more frequent in daily use than browsing backups.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, EventsOn, type GameView, type UpdateInfo } from "../../api";
+import { api, EventsOn, type GameView, type SwitchStatus, type UpdateInfo } from "../../api";
 import { useControllerButton, useControllerConnected, useControllerNav } from "../../controller";
 import {
   getSoundPack,
@@ -35,6 +35,7 @@ import {
 } from "../../sound";
 import { GameDrawer } from "../GameDrawer";
 import { ShellBackupsView } from "./ShellBackupsView";
+import { ShellSwitchView } from "./ShellSwitchView";
 import { CornerIcons, CORNER_ICON_ORDER } from "./CornerIcons";
 import { GameCarousel } from "./GameCarousel";
 import { HeroPanel } from "./HeroPanel";
@@ -49,18 +50,21 @@ import { ShellLibrary } from "./ShellLibrary";
 import { PowerMenu } from "./PowerMenu";
 import { ShellUpdateModal } from "./ShellUpdateModal";
 
-type Overlay = "none" | "details" | "settings" | "backups" | "power" | "devices" | "library";
+type Overlay = "none" | "details" | "settings" | "backups" | "power" | "devices" | "library" | "switch";
 
 export function ShellApp({
   games,
   refresh,
   update,
   onDismissUpdate,
+  switchStatus,
 }: {
   games: GameView[];
   refresh: () => void;
   update: UpdateInfo | null;
   onDismissUpdate: () => void;
+  /** Live console presence, from the switch:status event in App.tsx. */
+  switchStatus: SwitchStatus | null;
 }) {
   const sorted = useMemo(() => {
     const arr = games.filter((g) => !g.game.hidden);
@@ -194,7 +198,8 @@ export function ShellApp({
     overlay === "settings" ||
     overlay === "power" ||
     overlay === "devices" ||
-    overlay === "library";
+    overlay === "library" ||
+    overlay === "switch";
   const inputBlocked = overlayBlocks || pickerOpen || audioOpen || btOpen || volOpen || updateModalOpen;
 
   useControllerNav((dir) => {
@@ -458,6 +463,8 @@ export function ShellApp({
         onPower={() => { playSelect(); setOverlay("power"); }}
         onSettings={() => { playSelect(); setOverlay("settings"); }}
         onBackups={() => { playSelect(); setOverlay("backups"); }}
+        onSwitch={() => { playSelect(); setOverlay("switch"); }}
+        switchConnected={!!switchStatus?.connected}
         focused={cornerFocus}
         onFocusChange={(i) => setCornerFocus(i)}
       />
@@ -480,6 +487,14 @@ export function ShellApp({
           onChanged={refresh}
         />
       )}
+      {overlay === "switch" && (
+        <ShellSwitchView
+          status={switchStatus}
+          games={games}
+          onClose={() => { playBack(); setOverlay("none"); }}
+        />
+      )}
+
       {overlay === "backups" && (
         <ShellBackupsView
           games={games}

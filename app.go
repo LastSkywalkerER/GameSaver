@@ -207,6 +207,11 @@ func (a *App) Startup(ctx context.Context) {
 	})
 	go a.controller.Run(a.ctx)
 
+	// Nintendo Switch presence poller — emits "switch:status" when a console
+	// running DBI's MTP responder is plugged in or unplugged, so the Switch
+	// tab can enable itself without the user hitting refresh.
+	go a.watchSwitch()
+
 	// Global game↔launcher toggle hotkey — shell mode only. Lets the user flip
 	// between a running game and the launcher without Alt+Tab (#4). Uses a
 	// supported RegisterHotKey, never a low-level keyboard hook (anti-cheat).

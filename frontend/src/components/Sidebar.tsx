@@ -6,16 +6,21 @@ import { useControllerConnected } from "../controller";
 
 // "library" is gone — it was a near-duplicate of dashboard. "stores" is the
 // new multi-account store-library tab (#5).
-export type Page = "dashboard" | "stores" | "backups" | "settings";
+export type Page = "dashboard" | "stores" | "switch" | "backups" | "settings";
 
 const COLLAPSE_KEY = "gs:sidebarCollapsed";
 
 export function Sidebar({
   page,
   onNavigate,
+  switchConnected = false,
 }: {
   page: Page;
   onNavigate: (p: Page) => void;
+  /** Drives the green dot on the Switch tab. The tab itself is always
+   *  present so previously-made console backups stay reachable with the
+   *  console unplugged; it's the device actions inside that get gated. */
+  switchConnected?: boolean;
 }) {
   const t = useT();
   const [version, setVersion] = useState<string>("");
@@ -34,9 +39,10 @@ export function Sidebar({
     api.AppVersion().then((v: any) => setVersion(typeof v === "string" ? v : ""));
   }, []);
 
-  const items: { id: Page; label: string; icon: string }[] = [
+  const items: { id: Page; label: string; icon: string; dot?: boolean }[] = [
     { id: "dashboard", label: t("nav.dashboard"), icon: "▦" },
     { id: "stores",    label: "Магазины",         icon: "🛒" },
+    { id: "switch",    label: "Switch",           icon: "🎮", dot: switchConnected },
     { id: "backups",   label: t("nav.backups"),   icon: "⛁" },
     { id: "settings",  label: t("nav.settings"),  icon: "⚙" },
   ];
@@ -73,6 +79,12 @@ export function Sidebar({
           >
             <span className="w-5 text-center text-base">{it.icon}</span>
             {!collapsed && <span>{it.label}</span>}
+            {it.dot && (
+              <span
+                className="ml-auto h-2 w-2 shrink-0 rounded-full bg-emerald-400"
+                title="Switch подключён по MTP"
+              />
+            )}
           </button>
         ))}
       </nav>

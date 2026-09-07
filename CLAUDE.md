@@ -3,7 +3,7 @@
 > **Repo-level file** for `GameSaver` — a native **Windows** desktop app (Wails v2 + Go + React/TS)
 > that scans drives for installed games, matches & versions their save folders, backs them up as
 > ZIPs, and can run as a PlayStation-style **shell replacement** for a console-like experience.
-> Version: v1.0 · Last reviewed: 2026-06-13 · Current release: **v0.10.8**
+> Version: v1.0 · Last reviewed: 2026-09-07 · Current release: **v0.12.0**
 >
 > This file is **navigation and red lines**. Detailed rules — in `.claude/rules/`.
 > Claude workflow — in `.claude/protocol/`. Decisions — in `.claude/decisions/`.
@@ -138,6 +138,8 @@ This file is alive. It grows after incidents and decisions.
 | `match/data` | Embedded Ludusavi manifest (sanitized — see [secrets.md](.claude/rules/secrets.md)). |
 | `meta` | Cover/hero/icon enrichment (SteamGridDB, Steam CDN, exe icon extraction). |
 | `backup` | ZIP snapshot engine, restore (pre-restore auto-backup), retention, reconcile. |
+| `switchmtp` | WPD (Windows Portable Devices) COM wrapper for a Nintendo Switch on MTP: enumerate, walk, read; write is isolated in `upload_windows.go`. Raw vtable calls — see [0030](.claude/decisions/0030-switch-mtp-saves.md). |
+| `switchsaves` | DBI Saves-store model (title → **profile** → files), console backup into `<BackupRoot>\.switch\`, and both transfer directions. |
 | `launcher` | Game launch: exe-first for non-Steam, deep-link only if protocol registered. |
 | `playtime` | `tasklist`-poll session tracker (6 s interval); emits `playtime:changed`. |
 | `watcher` | fsnotify auto-backup with debounce (default off). |
@@ -163,6 +165,7 @@ This file is alive. It grows after incidents and decisions.
 | `cmd/gen-icon` | Generates multi-res `build/appicon.png` + `internal/tray/icon.ico`. |
 | `cmd/gs-reconcile` | CLI backup reconcile. |
 | `cmd/gs-smoke` | Smoke-test harness. |
+| `cmd/gs-switch` | MTP harness. Read-only by default (list devices, dump the Saves tree, hash a profile, dry-run a plan); `-restore`/`-upload` open a **writable** session and modify the console — `-upload` skips the pre-backup, so it is a lab tool, not a user path. |
 
 ### Frontend — `frontend/src/`
 
@@ -230,6 +233,10 @@ This file is alive. It grows after incidents and decisions.
 - 🔴 **`SetSuspendState` only via direct syscall, never `rundll32 ...,SetSuspendState`.** rundll32's entry **ignores its args** and sleeps with wake events enabled → PC wakes 2 s later. Incident: v0.7.0–0.7.6. See [decision 0019](.claude/decisions/0019-sleep-setsuspendstate-direct.md).
 
 - 🔴 **"clean up / remove / filter" is never permission to delete user data.** Saves, snapshots, and the DB are the whole point of the app. Default = move/mark. Delete only on explicit "delete" wording.
+
+- 🔴 **Writing to the Switch is backup-gated and one-way-guarded.** Scan/backup sessions request `GENERIC_READ` from the WPD driver, so they cannot alter the console; only `TransferPCToSwitch` opens a writable session, and it takes an unconditional backup of the target profile first — a failed backup aborts the transfer. Never add a "skip backup" flag, and never widen the read sessions' access. See [decision 0030](.claude/decisions/0030-switch-mtp-saves.md).
+
+- 🔴 **Console backups belong in `<BackupRoot>\.switch\`.** `backup.Reconcile` skips dot-prefixed top-level dirs; that is the only thing keeping console snapshots from being imported as phantom Windows games with unusable `mtp://` save paths. Don't rename the folder.
 
 - 🔴 **Restore must auto-backup the current save first.** Overwriting a live save without a pre-restore snapshot = data loss. See [backup-restore.md](.claude/rules/backup-restore.md).
 

@@ -257,6 +257,93 @@ export interface ReconcileResult {
   deadSnapshots: number;
 }
 
+// ─── Nintendo Switch over MTP ──────────────────────────────────────────────
+
+// Where a backup was captured from. Manifests written before this existed have
+// no platform field and are treated as "windows" by the backend.
+export type Platform = "windows" | "switch";
+
+export interface SwitchStatus {
+  connected: boolean;
+  name: string;
+  serial: string;
+  error?: string;
+}
+
+// "profile" is a console user account (the common case). The rest are genuine
+// save-data types that live at the same level of DBI's tree.
+export type SwitchEntryKind = "profile" | "bcat" | "device" | "cache";
+
+export interface SwitchEntry {
+  name: string;
+  objectId: string;
+  kind: SwitchEntryKind;
+  fileCount: number;
+  sizeBytes: number;
+}
+
+export interface SwitchTitle {
+  name: string;
+  objectId: string;
+  installed: boolean;
+  entries: SwitchEntry[] | null;
+}
+
+export interface SwitchLibrary {
+  device: { pnpId: string; friendlyName: string; serial: string };
+  titles: SwitchTitle[] | null;
+  scannedAt: number;
+}
+
+export interface SwitchBackup {
+  title: string;
+  profile: string;
+  serial: string;
+  platform: Platform;
+  createdAt: number;
+  fileCount: number;
+  totalBytes: number;
+  archivePath: string;
+  sizeOnDisk: number;
+  trigger: Trigger;
+}
+
+export interface SwitchBackupResult {
+  title: string;
+  profile: string;
+  archivePath: string;
+  fileCount: number;
+  totalBytes: number;
+  skipped: boolean;
+  error?: string;
+}
+
+export interface SwitchSelection {
+  title: string;
+  profile: string;
+}
+
+export interface PlannedWrite {
+  rel: string;
+  size: number;
+  replaces: boolean;
+}
+
+export interface UploadPlan {
+  title: string;
+  profile: string;
+  writes: PlannedWrite[] | null;
+  newFiles: number;
+  replaced: number;
+  totalBytes: number;
+  untouched: string[] | null;
+}
+
+export interface SwitchDownloadResult {
+  files: number;
+  totalBytes: number;
+}
+
 export interface UpdateInfo {
   available: boolean;
   currentVersion: string;

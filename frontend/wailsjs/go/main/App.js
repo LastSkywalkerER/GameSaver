@@ -30,6 +30,10 @@ export function BackupGame(arg1) {
   return window['go']['main']['App']['BackupGame'](arg1);
 }
 
+export function BackupSwitchSelection(arg1) {
+  return window['go']['main']['App']['BackupSwitchSelection'](arg1);
+}
+
 export function CancelMonitorPick() {
   return window['go']['main']['App']['CancelMonitorPick']();
 }
@@ -70,6 +74,10 @@ export function EnableShellMode() {
   return window['go']['main']['App']['EnableShellMode']();
 }
 
+export function ExtractSwitchBackupToPC(arg1, arg2) {
+  return window['go']['main']['App']['ExtractSwitchBackupToPC'](arg1, arg2);
+}
+
 export function FinishMonitorPick(arg1) {
   return window['go']['main']['App']['FinishMonitorPick'](arg1);
 }
@@ -108,6 +116,14 @@ export function GetStoreLoginInfo(arg1) {
 
 export function GetSunshineStatus() {
   return window['go']['main']['App']['GetSunshineStatus']();
+}
+
+export function GetSwitchStatus() {
+  return window['go']['main']['App']['GetSwitchStatus']();
+}
+
+export function GetSwitchTitleEntries(arg1) {
+  return window['go']['main']['App']['GetSwitchTitleEntries'](arg1);
 }
 
 export function GetVolume() {
@@ -152,6 +168,10 @@ export function ListPlaySessions(arg1, arg2) {
 
 export function ListStoreAccounts() {
   return window['go']['main']['App']['ListStoreAccounts']();
+}
+
+export function ListSwitchBackups() {
+  return window['go']['main']['App']['ListSwitchBackups']();
 }
 
 export function LockWorkstation() {
@@ -214,6 +234,10 @@ export function PrepareMonitorPick() {
   return window['go']['main']['App']['PrepareMonitorPick']();
 }
 
+export function PreviewSwitchUpload(arg1, arg2, arg3) {
+  return window['go']['main']['App']['PreviewSwitchUpload'](arg1, arg2, arg3);
+}
+
 export function QuitApp() {
   return window['go']['main']['App']['QuitApp']();
 }
@@ -254,6 +278,10 @@ export function RestoreSnapshot(arg1, arg2) {
   return window['go']['main']['App']['RestoreSnapshot'](arg1, arg2);
 }
 
+export function RestoreSwitchBackupToConsole(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RestoreSwitchBackupToConsole'](arg1, arg2, arg3);
+}
+
 export function ReverseScanSaves() {
   return window['go']['main']['App']['ReverseScanSaves']();
 }
@@ -264,6 +292,10 @@ export function ScanBluetoothDevices() {
 
 export function ScanLibrary() {
   return window['go']['main']['App']['ScanLibrary']();
+}
+
+export function ScanSwitch() {
+  return window['go']['main']['App']['ScanSwitch']();
 }
 
 export function SearchManifest(arg1, arg2) {
@@ -352,6 +384,14 @@ export function SyncStoreLibraries() {
 
 export function Toast(arg1, arg2) {
   return window['go']['main']['App']['Toast'](arg1, arg2);
+}
+
+export function TransferPCToSwitch(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TransferPCToSwitch'](arg1, arg2, arg3);
+}
+
+export function TransferSwitchToPC(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TransferSwitchToPC'](arg1, arg2, arg3);
 }
 
 export function VolumeStepDown(arg1) {

@@ -20,10 +20,10 @@ import { isNavSoundEnabled, playSelect, setNavSoundEnabled } from "../../sound";
 import { useState } from "react";
 
 export type CornerIconKey =
-  | "sound" | "devices" | "library" | "backups" | "settings" | "power";
+  | "sound" | "devices" | "library" | "switch" | "backups" | "settings" | "power";
 
 export const CORNER_ICON_ORDER: CornerIconKey[] = [
-  "sound", "devices", "library", "backups", "settings", "power",
+  "sound", "devices", "library", "switch", "backups", "settings", "power",
 ];
 
 export function CornerIcons({
@@ -32,6 +32,8 @@ export function CornerIcons({
   onPower,
   onSettings,
   onBackups,
+  onSwitch,
+  switchConnected = false,
   focused,
   onFocusChange,
 }: {
@@ -40,6 +42,11 @@ export function CornerIcons({
   onPower: () => void;
   onSettings: () => void;
   onBackups: () => void;
+  onSwitch: () => void;
+  /** Drives the green dot. The icon stays in the row regardless — the order
+   *  array is what maps d-pad focus to actions, so hiding an entry would
+   *  renumber every icon after it. */
+  switchConnected?: boolean;
   /** When the carousel hands focus up to this row, the active icon
    *  index lives here so left/right walks across them. -1 = not
    *  focused (the row is just visible but not the input target). */
@@ -60,6 +67,7 @@ export function CornerIcons({
     sound: toggleSound,
     devices: onPickDevices,
     library: onLibrary,
+    switch: onSwitch,
     backups: onBackups,
     settings: onSettings,
     power: onPower,
@@ -104,30 +112,40 @@ export function CornerIcons({
       <IconButton
         i={3}
         focused={focused}
-        title="Бэкапы"
-        onClick={onBackups}
+        title={switchConnected
+          ? "Сейвы Nintendo Switch (консоль подключена)"
+          : "Сейвы Nintendo Switch — консоль не подключена, доступны только бэкапы"}
+        onClick={onSwitch}
         onFocus={() => onFocusChange(3)}
-      >⛁</IconButton>
+        dot={switchConnected}
+      >🎮</IconButton>
       <IconButton
         i={4}
         focused={focused}
-        title="Настройки (Y на геймпаде)"
-        onClick={onSettings}
+        title="Бэкапы"
+        onClick={onBackups}
         onFocus={() => onFocusChange(4)}
-      >⚙</IconButton>
+      >⛁</IconButton>
       <IconButton
         i={5}
         focused={focused}
+        title="Настройки (Y на геймпаде)"
+        onClick={onSettings}
+        onFocus={() => onFocusChange(5)}
+      >⚙</IconButton>
+      <IconButton
+        i={6}
+        focused={focused}
         title="Питание (Lock / Sleep / Reboot / Exit) — X / Start на геймпаде"
         onClick={onPower}
-        onFocus={() => onFocusChange(5)}
+        onFocus={() => onFocusChange(6)}
       >⏻</IconButton>
     </div>
   );
 }
 
 function IconButton({
-  i, focused, title, onClick, onFocus, children,
+  i, focused, title, onClick, onFocus, children, dot,
 }: {
   i: number;
   focused: number;
@@ -135,6 +153,8 @@ function IconButton({
   onClick: () => void;
   onFocus: () => void;
   children: React.ReactNode;
+  /** Small presence indicator, e.g. "a Switch is plugged in right now". */
+  dot?: boolean;
 }) {
   const isFocused = i === focused;
   return (
@@ -143,13 +163,16 @@ function IconButton({
       onClick={onClick}
       onMouseEnter={onFocus}
       className={
-        "grid h-12 w-12 place-items-center rounded-full border text-xl text-gray-200 backdrop-blur-md transition hover:scale-110 " +
+        "relative grid h-12 w-12 place-items-center rounded-full border text-xl text-gray-200 backdrop-blur-md transition hover:scale-110 " +
         (isFocused
           ? "border-accent bg-accent/30 scale-110 shadow-[0_10px_30px_rgba(124,92,255,0.45)]"
           : "border-white/10 bg-white/5 hover:bg-white/15")
       }
     >
       {children}
+      {dot && (
+        <span className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-black/60 bg-emerald-400" />
+      )}
     </button>
   );
 }

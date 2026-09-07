@@ -558,6 +558,38 @@ export namespace main {
 	        this.runningAsShell = source["runningAsShell"];
 	    }
 	}
+	export class SwitchSelection {
+	    title: string;
+	    profile: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SwitchSelection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.profile = source["profile"];
+	    }
+	}
+	export class SwitchStatus {
+	    connected: boolean;
+	    name: string;
+	    serial: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SwitchStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connected = source["connected"];
+	        this.name = source["name"];
+	        this.serial = source["serial"];
+	        this.error = source["error"];
+	    }
+	}
 
 }
 
@@ -709,6 +741,253 @@ export namespace sunshine {
 	        this.appsPath = source["appsPath"];
 	        this.managed = source["managed"];
 	    }
+	}
+
+}
+
+export namespace switchmtp {
+	
+	export class Device {
+	    pnpId: string;
+	    friendlyName: string;
+	    description: string;
+	    manufacturer: string;
+	    serial: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Device(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pnpId = source["pnpId"];
+	        this.friendlyName = source["friendlyName"];
+	        this.description = source["description"];
+	        this.manufacturer = source["manufacturer"];
+	        this.serial = source["serial"];
+	    }
+	}
+
+}
+
+export namespace switchsaves {
+	
+	export class Backup {
+	    title: string;
+	    profile: string;
+	    serial: string;
+	    platform: string;
+	    createdAt: number;
+	    fileCount: number;
+	    totalBytes: number;
+	    archivePath: string;
+	    sizeOnDisk: number;
+	    trigger: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Backup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.profile = source["profile"];
+	        this.serial = source["serial"];
+	        this.platform = source["platform"];
+	        this.createdAt = source["createdAt"];
+	        this.fileCount = source["fileCount"];
+	        this.totalBytes = source["totalBytes"];
+	        this.archivePath = source["archivePath"];
+	        this.sizeOnDisk = source["sizeOnDisk"];
+	        this.trigger = source["trigger"];
+	    }
+	}
+	export class BackupResult {
+	    title: string;
+	    profile: string;
+	    archivePath: string;
+	    fileCount: number;
+	    totalBytes: number;
+	    skipped: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BackupResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.profile = source["profile"];
+	        this.archivePath = source["archivePath"];
+	        this.fileCount = source["fileCount"];
+	        this.totalBytes = source["totalBytes"];
+	        this.skipped = source["skipped"];
+	        this.error = source["error"];
+	    }
+	}
+	export class DownloadResult {
+	    files: number;
+	    totalBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DownloadResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.files = source["files"];
+	        this.totalBytes = source["totalBytes"];
+	    }
+	}
+	export class Entry {
+	    name: string;
+	    objectId: string;
+	    kind: string;
+	    fileCount: number;
+	    sizeBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Entry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.objectId = source["objectId"];
+	        this.kind = source["kind"];
+	        this.fileCount = source["fileCount"];
+	        this.sizeBytes = source["sizeBytes"];
+	    }
+	}
+	export class Title {
+	    name: string;
+	    objectId: string;
+	    installed: boolean;
+	    entries: Entry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Title(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.objectId = source["objectId"];
+	        this.installed = source["installed"];
+	        this.entries = this.convertValues(source["entries"], Entry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Library {
+	    device: switchmtp.Device;
+	    titles: Title[];
+	    scannedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Library(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.device = this.convertValues(source["device"], switchmtp.Device);
+	        this.titles = this.convertValues(source["titles"], Title);
+	        this.scannedAt = source["scannedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PlannedWrite {
+	    rel: string;
+	    size: number;
+	    replaces: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlannedWrite(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rel = source["rel"];
+	        this.size = source["size"];
+	        this.replaces = source["replaces"];
+	    }
+	}
+	
+	export class UploadPlan {
+	    title: string;
+	    profile: string;
+	    writes: PlannedWrite[];
+	    newFiles: number;
+	    replaced: number;
+	    totalBytes: number;
+	    untouched: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new UploadPlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.profile = source["profile"];
+	        this.writes = this.convertValues(source["writes"], PlannedWrite);
+	        this.newFiles = source["newFiles"];
+	        this.replaced = source["replaced"];
+	        this.totalBytes = source["totalBytes"];
+	        this.untouched = source["untouched"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

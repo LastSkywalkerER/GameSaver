@@ -189,6 +189,14 @@ type LibraryCard struct {
 	ImageURL string `json:"imageUrl,omitempty"`
 }
 
+// Platform identifies which machine a save was captured from.
+type Platform string
+
+const (
+	PlatformWindows Platform = "windows"
+	PlatformSwitch  Platform = "switch"
+)
+
 // SnapshotManifest is what we write next to each .zip backup.
 type SnapshotManifest struct {
 	GameName     string         `json:"gameName"`
@@ -202,6 +210,23 @@ type SnapshotManifest struct {
 	TotalBytes   int64          `json:"totalBytes"`
 	Encrypted    bool           `json:"encrypted"`
 	AppVersion   string         `json:"appVersion"`
+
+	// Platform and the Switch* fields below are optional so that manifests
+	// written before they existed still unmarshal. An empty Platform means
+	// "windows" — see PlatformOrDefault, and never compare Platform directly.
+	Platform      Platform `json:"platform,omitempty"`
+	SwitchTitle   string   `json:"switchTitle,omitempty"`   // title as DBI names it, with ®/™
+	SwitchProfile string   `json:"switchProfile,omitempty"` // console user profile, e.g. "SkywalkerC"
+	SwitchSerial  string   `json:"switchSerial,omitempty"`  // keys a backup to one console
+}
+
+// PlatformOrDefault treats a missing platform as Windows, which is what every
+// manifest written before the Switch feature landed implicitly was.
+func (m SnapshotManifest) PlatformOrDefault() Platform {
+	if m.Platform == "" {
+		return PlatformWindows
+	}
+	return m.Platform
 }
 
 type SnapshotFile struct {

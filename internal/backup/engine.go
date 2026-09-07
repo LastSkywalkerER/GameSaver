@@ -226,6 +226,7 @@ func (e *Engine) snapshotLocation(g *domain.Game, loc *domain.SaveLocation, trig
 		TotalBytes:   totalBytes,
 		Encrypted:    false,
 		AppVersion:   "0.1.0",
+		Platform:     domain.PlatformWindows,
 	}
 
 	compressed, err := writeZip(archivePath, loc.Path, files)
